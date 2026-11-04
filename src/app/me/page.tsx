@@ -122,6 +122,11 @@ function Me() {
             <span className={s.meta}>기간별 그림 해설</span>
             <IconNext />
           </Link>
+          <Link href="/guide" className={s.row}>
+            <span>사용 가이드</span>
+            <span className={s.meta}>다시 보기</span>
+            <IconNext />
+          </Link>
         </nav>
 
         <section className={s.list} aria-label="계정">

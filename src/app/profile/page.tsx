@@ -58,8 +58,8 @@ function Profile() {
   function start() {
     if (!picked) return;
     setProfile({ nick: name, style: picked });
-    // First setup goes on to writing; an edit returns to the my page.
-    router.push(editing ? "/me" : "/today");
+    // First setup goes on to the how-to slides; an edit returns to the my page.
+    router.push(editing ? "/me" : "/guide");
   }
 
   return (
