@@ -51,6 +51,11 @@ export default function PublicExhibitPage() {
           <p className={s.closed}>비공개이거나 없는 전시예요</p>
         </main>
       )}
+      {load.state === "ok" && !load.ex.isPublic && (
+        <p className={s.privateNote} role="note">
+          비공개 상태예요. 지금은 나만 볼 수 있어요.
+        </p>
+      )}
       {load.state === "ok" && <Gallery ex={load.ex} i={Math.min(i, load.ex.items.length - 1)} setI={setI} />}
 
       <footer className={s.foot}>

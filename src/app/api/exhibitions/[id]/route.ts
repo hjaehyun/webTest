@@ -1,7 +1,9 @@
 // GET /api/exhibitions/:id -> PublicExhibition, no sign-in needed
 // 404 for a bad id, a private exhibition or a missing one, so existence isn't revealed.
+// Exception: the signed-in owner still gets their own private exhibition (isPublic: false) to preview it.
 
 import { NextResponse } from "next/server";
+import { requireUser } from "@/server/auth";
 import { loadPublicExhibition } from "@/server/db/publicExhibition";
 import { DB_FAILED, fail } from "@/server/http";
 import { supabaseStateless } from "@/server/supabase";
@@ -16,9 +18,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   try {
     // Publishable key with no cookies = anon role, so only the public RLS policies apply.
-    const ex = await loadPublicExhibition(supabaseStateless(), id);
+    let ex = await loadPublicExhibition(supabaseStateless(), id);
+    if (!ex) {
+      // Not public: only its owner may see it, through their own session.
+      const me = await requireUser();
+      if (me) ex = await loadPublicExhibition(me.sb, id, me.user.id);
+    }
     if (process.env.NODE_ENV !== "production") {
-      console.log(`[GET /api/exhibitions/${id}]`, ex ? `found, ${ex.items.length} items` : "404");
+      const found = ex ? `found${ex.isPublic ? "" : " (owner preview)"}, ${ex.items.length} items` : "404";
+      console.log(`[GET /api/exhibitions/${id}]`, found);
     }
     if (!ex) return NextResponse.json({ error: NOT_FOUND }, { status: 404, headers: NO_STORE });
     return NextResponse.json(ex, { headers: NO_STORE });

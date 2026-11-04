@@ -69,6 +69,7 @@ export type PublicExhibition = {
   id: string;
   title: string;
   desc: string;
+  isPublic: boolean; // false only in the owner's own preview
   ownerNick: string | null; // null if the owner hasn't set a profile yet
   items: PublicArtwork[]; // in hanging order
 };

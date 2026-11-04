@@ -1,6 +1,8 @@
 // Read of a public exhibition for anyone, signed in or not. The client passed in has no
 // session (anon), so the public RLS policies in supabase/schema.sql decide what comes back:
 // a private exhibition simply isn't found. Entries are never selected.
+// The owner's preview passes their own signed-in client plus ownerId, so their private exhibition
+// is found through the "own" policies instead — still never anyone else's.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PublicArtwork, PublicExhibition, Scene } from "@/lib/types";
@@ -12,13 +14,14 @@ type ItemRow = {
 };
 
 /** The exhibition, or null when it is private or doesn't exist (callers answer 404 either way). */
-export async function loadPublicExhibition(sb: SupabaseClient, id: string): Promise<PublicExhibition | null> {
-  const exRes = await sb
-    .from("exhibitions")
-    .select("id, user_id, title, description")
-    .eq("id", id)
-    .eq("is_public", true) // RLS already hides private ones; this keeps the intent obvious
-    .maybeSingle();
+export async function loadPublicExhibition(
+  sb: SupabaseClient,
+  id: string,
+  ownerId?: string,
+): Promise<PublicExhibition | null> {
+  const base = sb.from("exhibitions").select("id, user_id, title, description, is_public").eq("id", id);
+  // RLS already hides private ones from anon; the filters keep the intent obvious.
+  const exRes = await (ownerId ? base.eq("user_id", ownerId) : base.eq("is_public", true)).maybeSingle();
   if (exRes.error) throw new Error(`${exRes.error.code} ${exRes.error.message}`);
   const ex = exRes.data;
   if (!ex) return null;
@@ -41,5 +44,12 @@ export async function loadPublicExhibition(sb: SupabaseClient, id: string): Prom
     items.push({ date: a.day, scene: a.scene as Scene, imageUrl: a.image_url, summary: a.summary, note: r.note });
   }
 
-  return { id: ex.id, title: ex.title, desc: ex.description, ownerNick: profileRes.data?.nick ?? null, items };
+  return {
+    id: ex.id,
+    title: ex.title,
+    desc: ex.description,
+    isPublic: ex.is_public,
+    ownerNick: profileRes.data?.nick ?? null,
+    items,
+  };
 }
