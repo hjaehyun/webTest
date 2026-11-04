@@ -42,6 +42,16 @@ input::placeholder { color: var(--faint); }
   position: relative;
 }
 .app.dark { background: var(--dark); color: #F2EFE9; }
+/* Wide screens: a phone-shaped frame that fits the window height instead of a full-height strip */
+@media (min-width: 768px) and (min-height: 600px) {
+  body { height: 100dvh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .app {
+    height: calc(100dvh - 48px); max-height: 932px;
+    width: auto; aspect-ratio: 9 / 19.5; min-width: 340px; max-width: 430px;
+    margin: 0; border-radius: 32px; border: 1px solid var(--line-2);
+    box-shadow: 0 12px 40px rgba(35, 33, 29, .12);
+  }
+}
 .scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .hand { font-family: var(--font-hand); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
