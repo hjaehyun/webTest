@@ -36,7 +36,7 @@ http://localhost:3000 (모바일 폭 기준 디자인, 데스크톱에서는 가
 | `/curator` | AI 큐레이터 (이번 주 / 이번 달 / 계절) |
 | `/exhibition` | 나의 전시회 |
 | `/exhibition/pick` | 전시할 그림 고르기 |
-| `/e/[id]` | 공개 전시 관람 (아직 본인 데이터만 표시) |
+| `/e/[id]` | 공개 전시 관람 (로그인 없이, `GET /api/exhibitions/[id]`) |
 
 ## 구조
 
@@ -44,7 +44,7 @@ http://localhost:3000 (모바일 폭 기준 디자인, 데스크톱에서는 가
 supabase/schema.sql   테이블 5개 + RLS + 트리거 + RPC + Storage 버킷
 src/
   app/                화면 (App Router, 화면별 CSS Module)
-  app/api/            서버 API: auth/*, me/*, summarize, draw, curate
+  app/api/            서버 API: auth/*, me/*, exhibitions/[id](공개), summarize, draw, curate
   components/         Art(임시 그림), ui(TopBar, BottomNav, Screen, ProfileButton)
   lib/
     types.ts          DB 테이블과 같은 모양의 타입
@@ -54,6 +54,7 @@ src/
     supabase.ts       Supabase 클라이언트 (요청 사용자 권한 / 관리자)
     auth.ts           로그인 사용자 확인
     db/data.ts        쿼리
+    db/publicExhibition.ts  공개 전시 조회 (anon, 로그인 없음)
     ai/               AI 제공자 (mock 동작, claude/openai는 스텁)
 ```
 
@@ -61,7 +62,6 @@ src/
 
 ## 다음 단계
 
-1. 공개 전시: `GET /api/exhibitions/[id]` + `/e/[id]` 연결
-2. AI 업체 결정 후 `src/server/ai/claude.ts` 또는 `openai.ts` 구현
-3. 그림을 Storage에 올리고 `Art` 컴포넌트 → `<img>`
-4. 자정 자동 마감: Vercel Cron
+1. AI 업체 결정 후 `src/server/ai/claude.ts` 또는 `openai.ts` 구현
+2. 그림을 Storage에 올리고 `Art` 컴포넌트 → `<img>`
+3. 자정 자동 마감: Vercel Cron
