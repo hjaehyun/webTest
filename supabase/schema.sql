@@ -57,9 +57,21 @@ create table if not exists public.exhibition_items (
   primary key (exhibition_id, artwork_id)
 );
 
+-- AI calls per user per day (Asia/Seoul date). Only consume_ai_quota() below writes it,
+-- so a user can't reset their own count; they may read it.
+create table if not exists public.ai_usage (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  day     date not null,
+  kind    text not null check (kind in ('summarize', 'draw', 'curate')),
+  count   int  not null default 0 check (count >= 0),
+  primary key (user_id, day, kind)
+);
+
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant select on public.profiles, public.daily_artworks, public.exhibitions, public.exhibition_items to anon;
+revoke insert, update, delete on public.ai_usage from anon, authenticated;
+revoke select on public.ai_usage from anon;
 
 -- ---------------------------------------------------------------- helpers
 
@@ -118,6 +130,35 @@ begin
 end;
 $$;
 
+-- Counts one AI call for the caller and says whether it is within today's limit.
+-- security definer so it can write ai_usage, which the caller can't; the limits live here, not in an
+-- argument, so calling it directly can only use up your own quota. Change the numbers to retune.
+create or replace function public.consume_ai_quota(p_kind text)
+returns boolean language plpgsql security definer set search_path = '' as $$
+declare
+  uid  uuid := auth.uid();
+  lim  int;
+  used int;
+begin
+  if uid is null then
+    raise exception 'sign-in required' using errcode = '42501';
+  end if;
+  lim := case p_kind when 'summarize' then 20 when 'draw' then 10 when 'curate' then 20 end;
+  if lim is null then
+    raise exception 'unknown AI kind: %', p_kind using errcode = '22023';
+  end if;
+
+  -- The upsert locks the row, so concurrent calls can't both slip past the limit.
+  insert into public.ai_usage as u (user_id, day, kind, count)
+    values (uid, (now() at time zone 'Asia/Seoul')::date, p_kind, 1)
+    on conflict (user_id, day, kind) do update set count = u.count + 1 where u.count < lim
+    returning u.count into used;
+  return used is not null; -- no row back = the update was skipped = over the limit
+end;
+$$;
+revoke execute on function public.consume_ai_quota(text) from public, anon;
+grant execute on function public.consume_ai_quota(text) to authenticated;
+
 -- ---------------------------------------------------------------- row level security
 
 alter table public.profiles         enable row level security;
@@ -125,6 +166,7 @@ alter table public.entries          enable row level security;
 alter table public.daily_artworks   enable row level security;
 alter table public.exhibitions      enable row level security;
 alter table public.exhibition_items enable row level security;
+alter table public.ai_usage         enable row level security;
 
 -- profiles
 drop policy if exists "profiles: own" on public.profiles;
@@ -181,6 +223,11 @@ create policy "items: write own" on public.exhibition_items
     exists (select 1 from public.exhibitions e where e.id = exhibition_id and e.user_id = (select auth.uid()))
     and exists (select 1 from public.daily_artworks a where a.id = artwork_id and a.user_id = (select auth.uid()))
   );
+
+-- ai_usage: read your own count; writes only through consume_ai_quota()
+drop policy if exists "ai_usage: read own" on public.ai_usage;
+create policy "ai_usage: read own" on public.ai_usage
+  for select to authenticated using (user_id = (select auth.uid()));
 
 -- ---------------------------------------------------------------- storage (for the image AI, later)
 -- Public bucket: anyone with a picture's URL can open it; paths start with the owner's id.

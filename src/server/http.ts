@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { NotConfiguredError } from "./ai";
+import { secLog } from "./debug";
 
 /** Thrown by server code for an expected failure the user should see (409 duplicate, 404, ...). */
 export class HttpError extends Error {
@@ -38,7 +39,16 @@ export function fail(err: unknown, fallback = "AI 요청에 실패했습니다")
 
 export const DB_FAILED = "저장소에 연결하지 못했어요";
 
+/**
+ * Parses a JSON body, or null. Only `Content-Type: application/json` is accepted: an HTML form
+ * can't send that type, so a cross-site form can't post JSON-looking text here (login CSRF, M1).
+ */
 export async function readJson(req: Request): Promise<unknown> {
+  const type = req.headers.get("content-type") ?? "";
+  if (!/^application\/json\b/i.test(type.trim())) {
+    secLog("non-JSON body rejected", { path: new URL(req.url).pathname, contentType: type || null });
+    return null;
+  }
   try {
     return await req.json();
   } catch {

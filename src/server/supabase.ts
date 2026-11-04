@@ -10,6 +10,17 @@ function env(name: string): string {
   return v;
 }
 
+/**
+ * Auth cookie flags (M2). The browser never talks to Supabase, so no script needs to read sb-* cookies:
+ * httpOnly keeps the tokens away from JS (XSS), secure keeps them off plain HTTP in production.
+ */
+const AUTH_COOKIE = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/",
+} as const;
+
 const NO_STORAGE = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } };
 
 /**
@@ -19,6 +30,7 @@ const NO_STORAGE = { auth: { persistSession: false, autoRefreshToken: false, det
 export async function supabaseForRequest(): Promise<SupabaseClient> {
   const jar = await cookies();
   return createServerClient(env("SUPABASE_URL"), env("SUPABASE_PUBLISHABLE_KEY"), {
+    cookieOptions: AUTH_COOKIE,
     cookies: {
       getAll: () => jar.getAll(),
       setAll: (list) => {
