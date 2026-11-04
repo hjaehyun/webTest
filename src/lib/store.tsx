@@ -5,7 +5,10 @@
 // if a save fails, the user is told and the diary is reloaded from the server.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Artwork, DB, Entry, Profile } from "./types";
+import type { Artwork, DB, Entry, Profile, Scene, StyleId } from "./types";
+
+/** A newly drawn picture's fields, for redrawArtwork. */
+export type Redraw = { scene: Scene; style: StyleId; summary: string; tags: string[] };
 
 type Store = {
   ready: boolean;
@@ -24,6 +27,8 @@ type Store = {
   addEntry: (date: string, text: string) => Entry;
   removeEntry: (date: string, id: string) => void;
   saveArtwork: (a: Artwork) => void;
+  /** "다시 그리기": waits for the server, then shows the new picture. Throws an Error with a showable message. */
+  redrawArtwork: (date: string, next: Redraw) => Promise<void>;
   toggleExhibit: (date: string) => void;
   setExhibitPublic: (on: boolean) => void;
 };
@@ -145,6 +150,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // The server already has the day's entries; it links them to the picture by date.
         const { date, scene, style, summary, tags } = a;
         save(api("POST", "/api/me/artworks", { date, scene, style, summary, tags }));
+      },
+      redrawArtwork: async (date, next) => {
+        // Not optimistic: the old picture stays on screen until the server has the new one.
+        await api("POST", `/api/me/artworks/${encodeURIComponent(date)}/redraw`, next);
+        update((d) => {
+          const old = d.artworks[date];
+          return old ? { ...d, artworks: { ...d.artworks, [date]: { ...old, ...next } } } : d;
+        });
       },
       toggleExhibit: (date) => {
         const has = cur.exhibition.dates.includes(date);

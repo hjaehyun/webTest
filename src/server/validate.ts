@@ -43,6 +43,23 @@ export const AI_LIMITS = {
 export const isInt = (v: unknown, min: number, max: number): v is number =>
   Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 
-/** At most AI_LIMITS.tags strings of at most AI_LIMITS.tag characters each. */
+/** At most AI_LIMITS.tags strings of 1~AI_LIMITS.tag characters each (public.valid_tags in schema.sql). */
 export const isTagList = (v: unknown): v is string[] =>
-  Array.isArray(v) && v.length <= AI_LIMITS.tags && v.every((t) => typeof t === "string" && t.length <= AI_LIMITS.tag);
+  Array.isArray(v) &&
+  v.length <= AI_LIMITS.tags &&
+  v.every((t) => typeof t === "string" && t.length >= 1 && t.length <= AI_LIMITS.tag);
+
+// ---- picture body (POST /api/me/artworks, POST /api/me/artworks/:date/redraw) ----
+
+export type ArtworkInput = { scene: Scene; style: StyleId; summary: string; tags: string[] };
+
+/**
+ * Checks a picture's fields; returns the message to answer 400 with, or null when fine.
+ * Limits match the daily_artworks check constraints (M4).
+ */
+export function artworkInputError(b: Record<string, unknown>): string | null {
+  if (!isScene(b.scene) || !isStyle(b.style)) return "scene, style이 올바르지 않아요";
+  if (!isText(b.summary, AI_LIMITS.summary)) return `summary: 1~${AI_LIMITS.summary}자가 필요합니다`;
+  if (!isTagList(b.tags)) return `tags: 최대 ${AI_LIMITS.tags}개, 각 1~${AI_LIMITS.tag}자여야 합니다`;
+  return null;
+}
