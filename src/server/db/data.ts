@@ -4,6 +4,7 @@
 
 import type { PostgrestError, SupabaseClient, User } from "@supabase/supabase-js";
 import type { Artwork, DB, Entry, Profile, Scene, StyleId } from "@/lib/types";
+import { debugLog } from "../debug";
 import { HttpError } from "../http";
 
 const DEFAULT_EXHIBITION_TITLE = "나의 전시";
@@ -11,6 +12,8 @@ const DEFAULT_EXHIBITION_TITLE = "나의 전시";
 // Postgres error codes we turn into user-facing answers.
 const UNIQUE_VIOLATION = "23505";
 const RLS_VIOLATION = "42501";
+const CHECK_VIOLATION = "23514"; // a table check constraint (style, scene, summary/tags limits)
+const NO_DATA_FOUND = "P0002";
 
 function check(error: PostgrestError | null, known: Record<string, HttpError> = {}): void {
   if (!error) return;
@@ -124,7 +127,37 @@ export async function saveArtwork(
     summary: a.summary,
     tags: a.tags,
   });
-  check(error, { [UNIQUE_VIOLATION]: new HttpError(409, "이날은 이미 그림이 있어요") });
+  check(error, {
+    [UNIQUE_VIOLATION]: new HttpError(409, "이날은 이미 그림이 있어요"),
+    [CHECK_VIOLATION]: new HttpError(400, "그림 정보가 너무 길거나 올바르지 않아요"),
+  });
+}
+
+/**
+ * "다시 그리기": replaces the day's picture with a new one in one transaction
+ * (redraw_artwork in schema.sql). The day stays closed and the picture keeps its exhibition spot.
+ */
+export async function redrawArtwork(
+  sb: SupabaseClient,
+  userId: string,
+  a: { date: string; scene: Scene; style: StyleId; summary: string; tags: string[] },
+): Promise<void> {
+  const { error } = await sb.rpc("redraw_artwork", {
+    p_day: a.date,
+    p_style: a.style,
+    p_scene: a.scene,
+    p_summary: a.summary,
+    p_tags: a.tags,
+  });
+  if (error?.code === "PGRST202") {
+    // Function not found: supabase/schema.sql has not been re-run since this change.
+    console.error("[artwork] redraw_artwork missing: run supabase/schema.sql in the Supabase SQL Editor");
+  }
+  check(error, {
+    [NO_DATA_FOUND]: new HttpError(404, "이날은 그림이 없어요"),
+    [CHECK_VIOLATION]: new HttpError(400, "그림 정보가 너무 길거나 올바르지 않아요"),
+  });
+  debugLog("artwork", "redrawn", { userId, date: a.date, style: a.style, scene: a.scene });
 }
 
 /** Updates the user's exhibition. `dates` replaces the hung pictures, in order. */

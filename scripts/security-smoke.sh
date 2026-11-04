@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Security smoke test for H1 / M1 (docs/review/2026-11-04-security-fix-h1-m1-m2.md).
+# Security smoke test for H1 / M1 / M4 (docs/review/2026-11-04-security-fix-*.md).
 # Checks what can be checked without signing in. Read-only: no account is created.
 #
 #   bash scripts/security-smoke.sh http://localhost:3000
@@ -47,6 +47,20 @@ LONG="$(node -e 'console.log(JSON.stringify({entries:[{id:"a",at:"x",text:"a".re
 check "summarize with 141-char text -> 400" 400 -X POST "${J[@]}" -d "$LONG" "$BASE/api/summarize"
 TAGS="$(node -e 'console.log(JSON.stringify({summary:{summary:"a",tags:Array(11).fill("t"),scene:"day"},style:"water"}))')"
 check "draw with 11 tags -> 400" 400 -X POST "${J[@]}" -d "$TAGS" "$BASE/api/draw"
+
+echo "-- M4: picture size limits (checked before sign-in)"
+ART_LONG="$(node -e 'console.log(JSON.stringify({date:"2026-11-04",scene:"cat",style:"water",summary:"a".repeat(501),tags:[]}))')"
+check "artworks with 501-char summary -> 400" 400 -X POST "${J[@]}" -d "$ART_LONG" "$BASE/api/me/artworks"
+ART_TAGS="$(node -e 'console.log(JSON.stringify({date:"2026-11-04",scene:"cat",style:"water",summary:"a",tags:Array(11).fill("t")}))')"
+check "artworks with 11 tags -> 400" 400 -X POST "${J[@]}" -d "$ART_TAGS" "$BASE/api/me/artworks"
+check "artworks with an empty tag -> 400" 400 -X POST "${J[@]}" \
+  -d '{"date":"2026-11-04","scene":"cat","style":"water","summary":"a","tags":[""]}' "$BASE/api/me/artworks"
+REDRAW_OK='{"scene":"cat","style":"water","summary":"a","tags":["t"]}'
+check "redraw with 501-char summary -> 400" 400 -X POST "${J[@]}" \
+  -d "$(node -e 'console.log(JSON.stringify({scene:"cat",style:"water",summary:"a".repeat(501),tags:[]}))')" \
+  "$BASE/api/me/artworks/2026-11-04/redraw"
+check "redraw with a bad date -> 400" 400 -X POST "${J[@]}" -d "$REDRAW_OK" "$BASE/api/me/artworks/2026-1-4/redraw"
+check "redraw without sign-in -> 401" 401 -X POST "${J[@]}" -d "$REDRAW_OK" "$BASE/api/me/artworks/2026-11-04/redraw"
 
 echo "-- M1: login CSRF"
 # What a cross-site <form enctype="text/plain"> would send.

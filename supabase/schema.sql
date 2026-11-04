@@ -72,6 +72,11 @@ grant select, insert, update, delete on all tables in schema public to authentic
 grant select on public.profiles, public.daily_artworks, public.exhibitions, public.exhibition_items to anon;
 revoke insert, update, delete on public.ai_usage from anon, authenticated;
 revoke select on public.ai_usage from anon;
+-- Pictures: users may read and create them, never change or delete them directly (M3).
+-- Creating is limited to the columns the app sends; image_url/status/created_at stay server-side.
+-- Redrawing goes through redraw_artwork() below. Account deletion uses the secret key and is unaffected.
+revoke insert, update, delete on public.daily_artworks from anon, authenticated;
+grant insert (user_id, day, style, scene, summary, tags) on public.daily_artworks to authenticated;
 
 -- ---------------------------------------------------------------- helpers
 
@@ -85,11 +90,34 @@ returns boolean language sql stable security definer set search_path = '' as $$
   );
 $$;
 
--- Has this user already closed (drawn) that day?
+-- Has the caller already closed (drawn) that day? Only answers about the caller (L1): asked about
+-- anyone else it says false, so it can't be used over RPC to learn other users' diary days.
+-- The entries policies only ever pass the caller's own user_id, so they are unaffected.
 create or replace function public.day_is_closed(p_user uuid, p_day date)
 returns boolean language sql stable security definer set search_path = '' as $$
-  select exists (select 1 from public.daily_artworks a where a.user_id = p_user and a.day = p_day);
+  select p_user = (select auth.uid())
+     and exists (select 1 from public.daily_artworks a where a.user_id = p_user and a.day = p_day);
 $$;
+revoke execute on function public.day_is_closed(uuid, date) from public, anon;
+grant execute on function public.day_is_closed(uuid, date) to authenticated;
+
+-- Tags on a picture: at most 10, each 1-20 characters (M4; same as AI_LIMITS in src/server/validate.ts).
+create or replace function public.valid_tags(p_tags text[])
+returns boolean language sql immutable set search_path = '' as $$
+  select cardinality(p_tags) <= 10
+     and coalesce((select bool_and(char_length(t) between 1 and 20) from unnest(p_tags) t), true);
+$$;
+
+-- Size limits on pictures (M4). NOT VALID: checked for new and changed rows only, so rows saved
+-- before this change don't make this script fail. Find old rows that break them with:
+--   select user_id, day from public.daily_artworks
+--    where char_length(summary) not between 1 and 500 or not public.valid_tags(tags);
+alter table public.daily_artworks drop constraint if exists daily_artworks_summary_len;
+alter table public.daily_artworks add constraint daily_artworks_summary_len
+  check (char_length(summary) between 1 and 500) not valid;
+alter table public.daily_artworks drop constraint if exists daily_artworks_tags_ok;
+alter table public.daily_artworks add constraint daily_artworks_tags_ok
+  check (public.valid_tags(tags)) not valid;
 
 -- New account -> its exhibition.
 create or replace function public.handle_new_user()
@@ -159,6 +187,50 @@ $$;
 revoke execute on function public.consume_ai_quota(text) from public, anon;
 grant execute on function public.consume_ai_quota(text) to authenticated;
 
+-- "다시 그리기": replaces the caller's picture for a day in one transaction. The old row is deleted
+-- and a new one created, but other sessions never see the day without a picture (so its entries stay
+-- locked) and the picture keeps its place in any exhibition. security definer because users may not
+-- delete pictures themselves (M3); it only ever touches auth.uid()'s own row, and the table's check
+-- constraints still validate style, scene, summary and tags.
+create or replace function public.redraw_artwork(
+  p_day date, p_style text, p_scene text, p_summary text, p_tags text[]
+)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  uid    uuid := auth.uid();
+  old_id bigint;
+  new_id bigint;
+  hung   jsonb;
+begin
+  if uid is null then
+    raise exception 'sign-in required' using errcode = '42501';
+  end if;
+
+  select id into old_id from public.daily_artworks
+   where user_id = uid and day = p_day
+   for update;
+  if old_id is null then
+    raise exception '그림이 없는 날이에요' using errcode = 'P0002';
+  end if;
+
+  -- Remember where the picture hangs; deleting it cascades to exhibition_items.
+  select coalesce(jsonb_agg(jsonb_build_object('ex', exhibition_id, 'pos', position, 'note', note)), '[]')
+    into hung
+    from public.exhibition_items where artwork_id = old_id;
+
+  delete from public.daily_artworks where id = old_id;
+  insert into public.daily_artworks (user_id, day, style, scene, summary, tags)
+    values (uid, p_day, p_style, p_scene, p_summary, coalesce(p_tags, '{}'))
+    returning id into new_id;
+
+  insert into public.exhibition_items (exhibition_id, artwork_id, position, note)
+    select (h ->> 'ex')::uuid, new_id, (h ->> 'pos')::int, h ->> 'note'
+      from jsonb_array_elements(hung) h;
+end;
+$$;
+revoke execute on function public.redraw_artwork(date, text, text, text, text[]) from public, anon;
+grant execute on function public.redraw_artwork(date, text, text, text, text[]) to authenticated;
+
 -- ---------------------------------------------------------------- row level security
 
 alter table public.profiles         enable row level security;
@@ -192,10 +264,14 @@ create policy "entries: remove from open day" on public.entries
   using (user_id = (select auth.uid()) and not public.day_is_closed(user_id, day));
 
 -- daily_artworks
+-- (M3) read and create only; no update/delete policy, so direct changes are refused
 drop policy if exists "artworks: own" on public.daily_artworks;
-create policy "artworks: own" on public.daily_artworks
-  for all to authenticated
-  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+drop policy if exists "artworks: read own" on public.daily_artworks;
+create policy "artworks: read own" on public.daily_artworks
+  for select to authenticated using (user_id = (select auth.uid()));
+drop policy if exists "artworks: add own" on public.daily_artworks;
+create policy "artworks: add own" on public.daily_artworks
+  for insert to authenticated with check (user_id = (select auth.uid()));
 drop policy if exists "artworks: hung in a public exhibition" on public.daily_artworks;
 create policy "artworks: hung in a public exhibition" on public.daily_artworks
   for select to anon, authenticated using (public.is_publicly_shown(id));
