@@ -63,3 +63,20 @@ export type DB = {
   artworks: Record<string, Artwork>;
   exhibition: Exhibition;
 };
+
+/** GET /api/exhibitions/:id. Public view only: no entries, emails or user ids. */
+export type PublicExhibition = {
+  id: string;
+  title: string;
+  desc: string;
+  ownerNick: string | null; // null if the owner hasn't set a profile yet
+  items: PublicArtwork[]; // in hanging order
+};
+
+export type PublicArtwork = {
+  date: string; // YYYY-MM-DD
+  scene: Scene;
+  imageUrl: string | null;
+  summary: string; // scene_summary, shown as the caption when there is no note
+  note: string | null; // exhibition_items.note
+};

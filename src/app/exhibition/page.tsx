@@ -23,6 +23,8 @@ function Exhibition() {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
+    if (!ex.id) return; // no exhibition row yet (sign-up trigger missing): nothing to link to
+    // Same URL the public viewer reads: /e/<exhibitions.id> -> GET /api/exhibitions/:id
     const url = `${location.origin}/e/${ex.id}`;
     try {
       await navigator.clipboard.writeText(url);
