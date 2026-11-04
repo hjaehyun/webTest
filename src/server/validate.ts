@@ -23,3 +23,26 @@ export const isEmail = (v: unknown): v is string =>
 /** Non-empty after trimming and at most `max` characters. */
 export const isText = (v: unknown, max: number): v is string =>
   typeof v === "string" && v.trim().length > 0 && v.length <= max;
+
+// ---- AI route input limits (H1) ---------------------------------------------
+// Caps what one request can send to an AI provider. Mock output fits well inside these.
+
+export const AI_LIMITS = {
+  entries: 50, // fragments per day sent to summarize
+  entryText: 140, // same as entries.body in schema.sql
+  summary: 500, // scene description
+  tags: 10,
+  tag: 20,
+  periodLabel: 30, // "이번 주", "11월", "가을"
+  summaries: 100, // a season is at most 92 days
+  top: 10,
+  count: 1000,
+} as const;
+
+/** Integer in [min, max]. */
+export const isInt = (v: unknown, min: number, max: number): v is number =>
+  Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
+
+/** At most AI_LIMITS.tags strings of at most AI_LIMITS.tag characters each. */
+export const isTagList = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.length <= AI_LIMITS.tags && v.every((t) => typeof t === "string" && t.length <= AI_LIMITS.tag);
