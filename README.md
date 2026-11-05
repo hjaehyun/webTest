@@ -42,6 +42,8 @@ http://localhost:3000 (모바일 폭 기준 디자인, 데스크톱에서는 가
 
 ```
 supabase/schema.sql   테이블 5개 + RLS + 트리거 + RPC + Storage 버킷
+supabase/migrations/  이미 만든 DB에 덧붙일 변경분 (SQL Editor에서 실행, 다시 실행해도 안전)
+supabase/tests/       로컬 Postgres로 RLS 확인: bash supabase/tests/run-local.sh
 src/
   app/                화면 (App Router, 화면별 CSS Module)
   app/api/            서버 API: auth/*, me/*, exhibitions/[id](공개), summarize, draw, curate

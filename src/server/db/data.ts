@@ -114,6 +114,20 @@ export async function removeEntry(sb: SupabaseClient, userId: string, id: string
   if (!count) throw new HttpError(404, "지울 수 있는 조각이 없어요");
 }
 
+/**
+ * Changes a draft entry's text; its day and time stay as written. RLS hides entries of a closed day
+ * (and other users' entries) from updates, so those count as not found, like removeEntry.
+ */
+export async function updateEntry(sb: SupabaseClient, userId: string, id: string, text: string): Promise<void> {
+  const { error, count } = await sb
+    .from("entries")
+    .update({ body: text }, { count: "exact" })
+    .eq("id", id)
+    .eq("user_id", userId);
+  check(error);
+  if (!count) throw new HttpError(404, "고칠 수 있는 조각이 없어요");
+}
+
 export async function saveArtwork(
   sb: SupabaseClient,
   userId: string,
