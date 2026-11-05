@@ -57,6 +57,9 @@
 }
 .chip { flex-shrink: 0; height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--bg); color: var(--ink-2); font-size: 12px; cursor: pointer; }
 .chipOn { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-tint); }
+/* Shown above the input while a fragment is being edited. */
+.editBar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 16px 8px; padding: 6px 6px 6px 12px; border-radius: 12px; background: var(--accent-tint); color: var(--accent-ink); font-size: 12px; }
+.editBar button { height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font-size: 12px; cursor: pointer; }
 .inputRow { padding: 0 16px 12px; display: flex; gap: 8px; align-items: center; }
 .input { flex: 1; min-width: 0; height: 44px; border: 1px solid var(--line); border-radius: 22px; padding: 0 16px; font-size: 15px; background: var(--bg); color: var(--ink); outline-color: var(--accent); }
 .input:disabled { opacity: .55; }

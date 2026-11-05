@@ -24,7 +24,7 @@ export default function TodayPage() {
 type Stage = 0 | 1 | 2 | 3;
 
 function Today() {
-  const { db, addEntry, removeEntry, saveArtwork } = useStore();
+  const { db, addEntry, editEntry, removeEntry, saveArtwork } = useStore();
   const date = todayKey();
   const art = db.artworks[date];
   const style = db.profile!.style;
@@ -34,6 +34,8 @@ function Today() {
   const [hint, setHint] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [newId, setNewId] = useState<string | null>(null);
+  // The fragment whose text is in the input. The saved original is untouched until "저장".
+  const [editingId, setEditingId] = useState<string | null>(null);
   const feed = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
 
@@ -48,6 +50,14 @@ function Today() {
   function add() {
     const text = draft.trim();
     if (!text || stage > 0) return;
+    if (editingId) {
+      // Only send when the text really changed.
+      const old = entries.find((e) => e.id === editingId);
+      if (old && old.text !== text) editEntry(date, editingId, text);
+      setEditingId(null);
+      setDraft("");
+      return;
+    }
     const e = addEntry(date, text);
     setNewId(e.id);
     setDraft("");
@@ -55,14 +65,27 @@ function Today() {
     setOpenId(null);
   }
 
+  // Starts editing: the text goes to the input, the original stays saved until "저장".
   function edit(id: string, text: string) {
-    removeEntry(date, id);
+    setEditingId(id);
     setDraft(text);
+    setHint(null);
     setOpenId(null);
     input.current?.focus();
   }
 
+  function cancelEdit() {
+    setEditingId(null);
+    setDraft("");
+  }
+
+  function remove(id: string) {
+    if (id === editingId) cancelEdit();
+    removeEntry(date, id);
+  }
+
   async function close() {
+    if (editingId) cancelEdit();
     setOpenId(null);
     setStage(1);
     try {
@@ -124,6 +147,7 @@ function Today() {
           const showDivider = t.am !== lastAm;
           lastAm = t.am;
           const open = openId === e.id && stage === 0;
+          const editing = editingId === e.id;
           return (
             <div key={e.id} className={s.group}>
               {showDivider && <div className={s.divider}>{t.am ? "오전" : "오후"}</div>}
@@ -133,7 +157,7 @@ function Today() {
                     {t.am ? "오전" : "오후"} {t.label}
                   </span>
                   <button
-                    className={`hand ${s.bubble} ${open ? s.sel : ""}`}
+                    className={`hand ${s.bubble} ${open || editing ? s.sel : ""}`}
                     onClick={() => stage === 0 && setOpenId(open ? null : e.id)}
                     aria-expanded={open}
                   >
@@ -145,7 +169,7 @@ function Today() {
                     <button className={s.act} onClick={() => edit(e.id, e.text)}>
                       수정
                     </button>
-                    <button className={`${s.act} ${s.del}`} onClick={() => removeEntry(date, e.id)}>
+                    <button className={`${s.act} ${s.del}`} onClick={() => remove(e.id)}>
                       지우기
                     </button>
                   </div>
@@ -184,7 +208,7 @@ function Today() {
         )}
       </main>
 
-      {stage === 0 && n > 0 && (
+      {stage === 0 && n > 0 && !editingId && (
         <div className={s.closeBar}>
           <span>하루를 마무리할까요?</span>
           <button onClick={close}>오늘 마감하고 그림 그리기</button>
@@ -192,7 +216,13 @@ function Today() {
       )}
 
       <div className={s.composer}>
-        {stage === 0 && (
+        {editingId && (
+          <div className={s.editBar} role="status">
+            <span>조각을 고치는 중이에요</span>
+            <button onClick={cancelEdit}>취소</button>
+          </div>
+        )}
+        {stage === 0 && !editingId && (
           <div className={s.chips} role="group" aria-label="쓸 거리 추천">
             {PROMPTS.map((q) => (
               <button
@@ -222,12 +252,20 @@ function Today() {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.nativeEvent.isComposing) add();
+              if (e.key === "Escape" && editingId) cancelEdit();
             }}
             disabled={stage > 0}
-            placeholder={stage > 0 ? "오늘은 마감했어요" : hint ? `${hint} 한 줄로…` : "생각난 걸 한 줄로…"}
+            placeholder={
+              stage > 0 ? "오늘은 마감했어요" : editingId ? "고칠 내용을 한 줄로…" : hint ? `${hint} 한 줄로…` : "생각난 걸 한 줄로…"
+            }
             maxLength={140}
           />
-          <button className={s.send} onClick={add} disabled={stage > 0 || !draft.trim()} aria-label="조각 올리기">
+          <button
+            className={s.send}
+            onClick={add}
+            disabled={stage > 0 || !draft.trim()}
+            aria-label={editingId ? "수정 저장" : "조각 올리기"}
+          >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M12 19V5M5 12l7-7 7 7" />
             </svg>

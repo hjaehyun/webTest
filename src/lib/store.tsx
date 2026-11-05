@@ -25,6 +25,8 @@ type Store = {
   deleteAccount: (password: string) => Promise<void>;
   setProfile: (p: Profile) => void;
   addEntry: (date: string, text: string) => Entry;
+  /** Changes a draft's text in place; its time and order stay the same. */
+  editEntry: (date: string, id: string, text: string) => void;
   removeEntry: (date: string, id: string) => void;
   saveArtwork: (a: Artwork) => void;
   /** "다시 그리기": waits for the server, then shows the new picture. Throws an Error with a showable message. */
@@ -136,6 +138,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         update((d) => ({ ...d, drafts: { ...d.drafts, [date]: [...(d.drafts[date] ?? []), entry] } }));
         save(api("POST", "/api/me/entries", { date, entry }));
         return entry;
+      },
+      editEntry: (date, id, text) => {
+        update((d) => ({
+          ...d,
+          drafts: { ...d.drafts, [date]: (d.drafts[date] ?? []).map((e) => (e.id === id ? { ...e, text } : e)) },
+        }));
+        if (process.env.NODE_ENV !== "production") console.debug("[entries] edit", { date, id });
+        save(api("PATCH", `/api/me/entries/${encodeURIComponent(id)}`, { text }));
       },
       removeEntry: (date, id) => {
         update((d) => ({ ...d, drafts: { ...d.drafts, [date]: (d.drafts[date] ?? []).filter((e) => e.id !== id) } }));

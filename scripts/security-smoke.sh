@@ -62,6 +62,17 @@ check "redraw with 501-char summary -> 400" 400 -X POST "${J[@]}" \
 check "redraw with a bad date -> 400" 400 -X POST "${J[@]}" -d "$REDRAW_OK" "$BASE/api/me/artworks/2026-1-4/redraw"
 check "redraw without sign-in -> 401" 401 -X POST "${J[@]}" -d "$REDRAW_OK" "$BASE/api/me/artworks/2026-11-04/redraw"
 
+echo "-- entry edit: PATCH /api/me/entries/:id (input checked before sign-in)"
+EID="00000000-0000-4000-8000-000000000000"
+check "edit with a bad id -> 400" 400 -X PATCH "${J[@]}" -d '{"text":"a"}' "$BASE/api/me/entries/not-a-uuid"
+check "edit with empty text -> 400" 400 -X PATCH "${J[@]}" -d '{"text":"  "}' "$BASE/api/me/entries/$EID"
+check "edit with 141-char text -> 400" 400 -X PATCH "${J[@]}" \
+  -d "$(node -e 'console.log(JSON.stringify({text:"a".repeat(141)}))')" "$BASE/api/me/entries/$EID"
+check "edit with text/plain body -> 400" 400 -X PATCH -H 'Content-Type: text/plain' -d '{"text":"a"}' "$BASE/api/me/entries/$EID"
+check "edit without sign-in -> 401" 401 -X PATCH "${J[@]}" -d '{"text":"a"}' "$BASE/api/me/entries/$EID"
+check "edit from another Origin -> 403" 403 -X PATCH "${J[@]}" -H 'Origin: https://evil.example' \
+  -d '{"text":"a"}' "$BASE/api/me/entries/$EID"
+
 echo "-- M1: login CSRF"
 # What a cross-site <form enctype="text/plain"> would send.
 check "login with text/plain JSON-looking body -> 400" 400 -X POST -H 'Content-Type: text/plain' \
