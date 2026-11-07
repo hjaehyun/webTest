@@ -4,6 +4,14 @@
 export type Scene = "day" | "cat" | "rain" | "park" | "cafe" | "night";
 export type StyleId = "water" | "pencil" | "crayon" | "story";
 
+// Song recommendation match key (lists in src/server/music/key.ts and supabase/schema.sql).
+export type Mood = "calm" | "upbeat" | "flutter" | "proud" | "lazy" | "tired" | "blue" | "nostalgic" | "busy" | "cozy";
+export type WeatherKey = "clear" | "cloudy" | "rain" | "snow" | "hot" | "unknown";
+export type TimeOfDay = "morning" | "day" | "night";
+
+/** A picture's song (song_pool row). */
+export type Song = { id: number; videoId: string; title: string; channel: string };
+
 export type Profile = {
   nick: string;
   style: StyleId;
@@ -22,6 +30,8 @@ export type Artwork = {
   summary: string; // scene_summary from the text AI
   tags: string[];
   entries: Entry[];
+  mood?: Mood | null; // picked by the text AI; keys the song recommendation
+  song?: Song | null; // null until one is recommended
 };
 
 export type Exhibition = {
@@ -35,7 +45,7 @@ export type Exhibition = {
 // API payloads shared by the client (lib/ai.ts) and the server routes (app/api/*).
 
 /** Text AI result: fragments -> one scene description + tags. */
-export type DaySummary = { summary: string; tags: string[]; scene: Scene };
+export type DaySummary = { summary: string; tags: string[]; scene: Scene; mood: Mood };
 
 /** Image AI result. imageUrl stays null until a real image provider is wired up. */
 export type Drawing = { scene: Scene; imageUrl: string | null };
@@ -80,4 +90,5 @@ export type PublicArtwork = {
   imageUrl: string | null;
   summary: string; // scene_summary, shown as the caption when there is no note
   note: string | null; // exhibition_items.note
+  song: Song | null; // title/channel/videoId only: the match key (mood, weather) stays private
 };

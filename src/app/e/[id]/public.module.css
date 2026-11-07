@@ -7,7 +7,9 @@
 .owner { font-size: 12px; color: #A9A49B; letter-spacing: 0.04em; }
 .head h1 { margin: 0; font-size: 38px; font-weight: 700; line-height: 1.1; }
 .head p { margin: 0; font-size: 14px; color: #CFCAC1; }
-.main { flex: 1; min-height: 0; padding: 20px 28px; display: flex; flex-direction: column; justify-content: center; gap: 18px; }
+/* safe center + scroll: with the song card the content can be taller than a phone screen */
+.main { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 28px; display: flex; flex-direction: column; justify-content: safe center; gap: 18px; }
+.main > * { flex-shrink: 0; }
 .closed { text-align: center; color: #CFCAC1; }
 .figure { margin: 0; display: flex; flex-direction: column; gap: 14px; }
 .mat { background: #F7F4EE; padding: 14px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45); }

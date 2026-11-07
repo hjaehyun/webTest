@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Art from "@/components/Art";
+import SongCard from "@/components/SongCard";
 import { IconBack, IconNext } from "@/components/ui";
 import { monthDay } from "@/lib/date";
 import { fetchPublicExhibition } from "@/lib/exhibitions";
@@ -101,6 +102,7 @@ function Gallery({ ex, i, setI }: { ex: PublicExhibition; i: number; setI: (i: n
                 <IconNext />
               </button>
             </div>
+            <SongCard song={cur.song} readOnly dark />
           </>
         )}
       </main>

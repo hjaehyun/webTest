@@ -1,18 +1,18 @@
 // Mock provider: keyword rules and canned text. Default until an AI vendor is chosen.
 
-import type { CurationInput, CurationText, DaySummary, Drawing, Entry, Scene } from "@/lib/types";
+import type { CurationInput, CurationText, DaySummary, Drawing, Entry, Mood, Scene } from "@/lib/types";
 import type { ImageProvider, TextProvider } from "./types";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const RULES: { re: RegExp; scene: Scene; tag: string }[] = [
-  { re: /고양이|냥이|강아지/, scene: "cat", tag: "동물" },
-  { re: /비 |비가|비오|비 오|우산|장마/, scene: "rain", tag: "비" },
-  { re: /커피|카페|라떼|차 한/, scene: "cafe", tag: "커피" },
-  { re: /밤|야경|달|새벽|잠/, scene: "night", tag: "밤" },
-  { re: /공원|산책|나무|단풍|걷/, scene: "park", tag: "산책" },
-  { re: /과제|시험|공부|수업|교수/, scene: "day", tag: "공부" },
-  { re: /배고|밥|먹|간식|과자/, scene: "cafe", tag: "먹을 것" },
+const RULES: { re: RegExp; scene: Scene; tag: string; mood: Mood }[] = [
+  { re: /고양이|냥이|강아지/, scene: "cat", tag: "동물", mood: "cozy" },
+  { re: /비 |비가|비오|비 오|우산|장마/, scene: "rain", tag: "비", mood: "calm" },
+  { re: /커피|카페|라떼|차 한/, scene: "cafe", tag: "커피", mood: "cozy" },
+  { re: /밤|야경|달|새벽|잠/, scene: "night", tag: "밤", mood: "calm" },
+  { re: /공원|산책|나무|단풍|걷/, scene: "park", tag: "산책", mood: "upbeat" },
+  { re: /과제|시험|공부|수업|교수/, scene: "day", tag: "공부", mood: "busy" },
+  { re: /배고|밥|먹|간식|과자/, scene: "cafe", tag: "먹을 것", mood: "lazy" },
 ];
 
 /** Picks the particle form by whether the word ends in a final consonant (받침). */
@@ -31,6 +31,7 @@ export const mockText: TextProvider = {
     const hits = RULES.filter((r) => r.re.test(text));
     const tags = Array.from(new Set(hits.map((h) => h.tag)));
     const scene = hits[0]?.scene ?? "day";
+    const mood: Mood = hits[0]?.mood ?? "calm";
     const summary =
       "[모의 요약] " +
       entries
@@ -38,7 +39,7 @@ export const mockText: TextProvider = {
         .map((e) => e.text.replace(/[.!?~]+$/, ""))
         .join(", ") +
       (entries.length > 3 ? " 외 " + (entries.length - 3) + "개의 순간." : ".");
-    return { summary, tags, scene };
+    return { summary, tags, scene, mood };
   },
 
   async writeCuration({ periodLabel, count, top }: CurationInput): Promise<CurationText> {

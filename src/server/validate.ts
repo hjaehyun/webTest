@@ -1,6 +1,7 @@
 // Input checks shared by the API routes. The DB enums in db/schema.sql must match these lists.
 
-import type { Scene, StyleId } from "@/lib/types";
+import type { Mood, Scene, StyleId } from "@/lib/types";
+import { isMood } from "./music/key";
 
 export const STYLE_IDS: StyleId[] = ["water", "pencil", "crayon", "story"];
 // Art.tsx only knows these; an unknown scene would render an empty picture.
@@ -51,7 +52,7 @@ export const isTagList = (v: unknown): v is string[] =>
 
 // ---- picture body (POST /api/me/artworks, POST /api/me/artworks/:date/redraw) ----
 
-export type ArtworkInput = { scene: Scene; style: StyleId; summary: string; tags: string[] };
+export type ArtworkInput = { scene: Scene; style: StyleId; summary: string; tags: string[]; mood?: Mood };
 
 /**
  * Checks a picture's fields; returns the message to answer 400 with, or null when fine.
@@ -60,6 +61,7 @@ export type ArtworkInput = { scene: Scene; style: StyleId; summary: string; tags
 export function artworkInputError(b: Record<string, unknown>): string | null {
   if (!isScene(b.scene) || !isStyle(b.style)) return "scene, style이 올바르지 않아요";
   if (!isText(b.summary, AI_LIMITS.summary)) return `summary: 1~${AI_LIMITS.summary}자가 필요합니다`;
+  if (b.mood !== undefined && b.mood !== null && !isMood(b.mood)) return "mood가 올바르지 않아요";
   if (!isTagList(b.tags)) return `tags: 최대 ${AI_LIMITS.tags}개, 각 1~${AI_LIMITS.tag}자여야 합니다`;
   return null;
 }

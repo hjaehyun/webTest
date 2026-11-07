@@ -5,6 +5,7 @@
 //   set ANTHROPIC_API_KEY in .env.local
 //   replace each method body with a client.messages.create(...) call that returns JSON
 //   (structured outputs via output_config.format keep the shape stable).
+// summarizeDay must also return mood: one of MOODS in src/server/music/key.ts.
 // Claude returns text only, so image drawing here would mean asking for SVG markup.
 // Stub methods leave out the interface's parameters; add them back when implementing.
 

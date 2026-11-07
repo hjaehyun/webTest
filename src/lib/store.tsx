@@ -4,8 +4,9 @@
 // so they don't know where data lives. Writes update the screen first and then save;
 // if a save fails, the user is told and the diary is reloaded from the server.
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Artwork, DB, Entry, Profile, Scene, StyleId } from "./types";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { shareInflight } from "./inflight";
+import type { Artwork, DB, Entry, Profile, Scene, Song, StyleId } from "./types";
 
 /** A newly drawn picture's fields, for redrawArtwork. */
 export type Redraw = { scene: Scene; style: StyleId; summary: string; tags: string[] };
@@ -29,6 +30,10 @@ type Store = {
   saveArtwork: (a: Artwork) => void;
   /** "다시 그리기": waits for the server, then shows the new picture. Throws an Error with a showable message. */
   redrawArtwork: (date: string, next: Redraw) => Promise<void>;
+  /** Asks for the day's song (reroll = "다른 곡"). Throws an Error with a showable message. */
+  requestSong: (date: string, reroll: boolean) => Promise<{ unchanged: boolean }>;
+  /** 1 = like, -1 = skip. Throws an Error with a showable message. */
+  voteSong: (songId: number, vote: 1 | -1) => Promise<void>;
   toggleExhibit: (date: string) => void;
   setExhibitPublic: (on: boolean) => void;
 };
@@ -97,6 +102,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [refresh],
   );
 
+  // One song request per day at a time (the auto request after closing vs. a quick tap on the detail page).
+  const songRequests = useRef(new Map<string, Promise<{ song: Song | null; unchanged: boolean }>>());
+
+  /** Fetches a song for the day and shows it. Not optimistic: the server picks it. */
+  const requestSong = useCallback(
+    async (date: string, reroll: boolean) => {
+      const r = await shareInflight(songRequests.current, date, () =>
+        api<{ song: Song | null; unchanged: boolean }>("POST", `/api/me/artworks/${encodeURIComponent(date)}/song`, { reroll }),
+      );
+      update((d) => {
+        const art = d.artworks[date];
+        return art ? { ...d, artworks: { ...d.artworks, [date]: { ...art, song: r.song } } } : d;
+      });
+      return { unchanged: r.unchanged };
+    },
+    [update],
+  );
+
   const value = useMemo<Store>(() => {
     const cur = db ?? createEmpty();
     return {
@@ -148,8 +171,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           return { ...d, drafts, artworks: { ...d.artworks, [a.date]: a } };
         });
         // The server already has the day's entries; it links them to the picture by date.
-        const { date, scene, style, summary, tags } = a;
-        save(api("POST", "/api/me/artworks", { date, scene, style, summary, tags }));
+        const { date, scene, style, summary, tags, mood } = a;
+        const saved = api("POST", "/api/me/artworks", { date, scene, style, summary, tags, mood });
+        save(saved);
+        // The song is extra: if it fails the picture is still saved, and the detail page offers a retry.
+        saved.then(() => requestSong(date, false)).catch((err) => console.warn("[song]", err));
       },
       redrawArtwork: async (date, next) => {
         // Not optimistic: the old picture stays on screen until the server has the new one.
@@ -158,6 +184,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const old = d.artworks[date];
           return old ? { ...d, artworks: { ...d.artworks, [date]: { ...old, ...next } } } : d;
         });
+      },
+      requestSong,
+      voteSong: async (songId, vote) => {
+        await api("POST", `/api/me/songs/${songId}/feedback`, { vote });
       },
       toggleExhibit: (date) => {
         const has = cur.exhibition.dates.includes(date);
@@ -170,7 +200,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         save(api("PATCH", "/api/me/exhibition", { isPublic: on }));
       },
     };
-  }, [db, authed, error, refresh, update, save]);
+  }, [db, authed, error, refresh, update, save, requestSong]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import Art from "@/components/Art";
+import SongCard from "@/components/SongCard";
 import { IconBack, IconNext, Screen, TopBar } from "@/components/ui";
 import { clock, longDate } from "@/lib/date";
 import { drawScene, summarizeDay } from "@/lib/ai";
@@ -22,11 +23,38 @@ export default function DetailPage() {
 function Detail() {
   const { date } = useParams<{ date: string }>();
   const router = useRouter();
-  const { db, toggleExhibit, redrawArtwork } = useStore();
+  const { db, toggleExhibit, redrawArtwork, requestSong, voteSong } = useStore();
   const art = db.artworks[date];
   const frame = useRef<HTMLSpanElement>(null);
   const [saving, setSaving] = useState(false);
   const [redrawing, setRedrawing] = useState(false);
+  const [songBusy, setSongBusy] = useState(false);
+  const [songNote, setSongNote] = useState<string | null>(null);
+  const [liked, setLiked] = useState<number | null>(null); // song id liked in this visit
+
+  async function song(reroll: boolean) {
+    if (songBusy) return;
+    setSongBusy(true);
+    setSongNote(null);
+    try {
+      const r = await requestSong(date, reroll);
+      if (reroll && r.unchanged) setSongNote("다른 곡이 아직 없어요");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "노래를 찾지 못했어요");
+    } finally {
+      setSongBusy(false);
+    }
+  }
+
+  async function like(id: number) {
+    setLiked(id);
+    try {
+      await voteSong(id, 1);
+    } catch (err) {
+      setLiked(null);
+      alert(err instanceof Error ? err.message : "저장하지 못했어요");
+    }
+  }
 
   // Dev-only trace so each redraw step can be followed in the browser console.
   const trace = (...a: unknown[]) => {
@@ -121,6 +149,16 @@ function Detail() {
             </div>
           )}
         </section>
+
+        <SongCard
+          song={art.song}
+          busy={songBusy || redrawing}
+          liked={!!art.song && liked === art.song.id}
+          note={songNote}
+          onRequest={() => song(false)}
+          onReroll={() => song(true)}
+          onLike={() => art.song && like(art.song.id)}
+        />
 
         <section className={s.entries}>
           <h2>그날의 조각 {art.entries.length}개</h2>

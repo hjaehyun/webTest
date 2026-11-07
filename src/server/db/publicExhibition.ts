@@ -6,11 +6,19 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PublicArtwork, PublicExhibition, Scene } from "@/lib/types";
+import { toSong } from "./songs";
 
 type ItemRow = {
   position: number;
   note: string | null;
-  daily_artworks: { day: string; scene: string; image_url: string | null; summary: string; status: string } | null;
+  daily_artworks: {
+    day: string;
+    scene: string;
+    image_url: string | null;
+    summary: string;
+    status: string;
+    song_pool: { id: number; video_id: string; title: string; channel: string } | null;
+  } | null;
 };
 
 /** The exhibition, or null when it is private or doesn't exist (callers answer 404 either way). */
@@ -30,7 +38,7 @@ export async function loadPublicExhibition(
     sb.from("profiles").select("nick").eq("user_id", ex.user_id).maybeSingle(),
     sb
       .from("exhibition_items")
-      .select("position, note, daily_artworks(day, scene, image_url, summary, status)")
+      .select("position, note, daily_artworks(day, scene, image_url, summary, status, song_pool(id, video_id, title, channel))")
       .eq("exhibition_id", ex.id)
       .order("position"),
   ]);
@@ -41,7 +49,7 @@ export async function loadPublicExhibition(
   for (const r of (itemRes.data ?? []) as unknown as ItemRow[]) {
     const a = r.daily_artworks;
     if (!a || a.status !== "done") continue; // hidden by RLS or still drawing
-    items.push({ date: a.day, scene: a.scene as Scene, imageUrl: a.image_url, summary: a.summary, note: r.note });
+    items.push({ date: a.day, scene: a.scene as Scene, imageUrl: a.image_url, summary: a.summary, note: r.note, song: a.song_pool ? toSong(a.song_pool) : null });
   }
 
   return {

@@ -15,11 +15,14 @@
    cp .env.example .env.local
    ```
    Project Settings → API Keys 값을 `.env.local`에 입력. `SUPABASE_SECRET_KEY`는 RLS를 무시하는 키이므로 절대 커밋/공유하지 않기.
+   노래 추천: `MUSIC_PROVIDER=youtube` + `YOUTUBE_API_KEY`(Google Cloud Console → YouTube Data API v3 → API 키, API 제한을 YouTube Data API v3로). 없으면 `mock`(모의 곡).
 3. 실행
    ```bash
    npm install
    npm run dev
    ```
+4. (선택) 노래 풀 미리 채우기: `node scripts/seed-song-pool.mjs` (YouTube 검색 30회)
+5. 확인: `npm test`(순수 함수), `bash scripts/security-smoke.sh http://localhost:3000`
 
 http://localhost:3000 (모바일 폭 기준 디자인, 데스크톱에서는 가운데 430px 컬럼)
 
@@ -31,7 +34,7 @@ http://localhost:3000 (모바일 폭 기준 디자인, 데스크톱에서는 가
 | `/profile` | 프로필: 이름 → 그림체 선택 |
 | `/today` | 오늘의 조각 (채팅형 입력, 마감하면 그림 생성) |
 | `/gallery` | 달력 갤러리 |
-| `/gallery/[date]` | 그림 상세 |
+| `/gallery/[date]` | 그림 상세 + 오늘의 노래(YouTube, 👍 / 다른 곡) |
 | `/me` | 마이페이지 (기록 요약, 그림체, 비밀번호 변경, 탈퇴) |
 | `/curator` | AI 큐레이터 (이번 주 / 이번 달 / 계절) |
 | `/exhibition` | 나의 전시회 |
@@ -41,11 +44,11 @@ http://localhost:3000 (모바일 폭 기준 디자인, 데스크톱에서는 가
 ## 구조
 
 ```
-supabase/schema.sql   테이블 5개 + RLS + 트리거 + RPC + Storage 버킷
+supabase/schema.sql   테이블 5개 + 노래(song_pool, song_feedback) + RLS + 트리거 + RPC + Storage 버킷
 src/
   app/                화면 (App Router, 화면별 CSS Module)
-  app/api/            서버 API: auth/*, me/*, exhibitions/[id](공개), summarize, draw, curate
-  components/         Art(임시 그림), ui(TopBar, BottomNav, Screen, ProfileButton)
+  app/api/            서버 API: auth/*, me/*(노래: me/artworks/[date]/song, me/songs/[id]/feedback), exhibitions/[id](공개), summarize, draw, curate
+  components/         Art(임시 그림), SongCard(오늘의 노래), ui(TopBar, BottomNav, Screen, ProfileButton)
   lib/
     types.ts          DB 테이블과 같은 모양의 타입
     store.tsx         화면용 데이터 저장소 (/api/me/* 호출)
@@ -56,6 +59,8 @@ src/
     db/data.ts        쿼리
     db/publicExhibition.ts  공개 전시 조회 (anon, 로그인 없음)
     ai/               AI 제공자 (mock 동작, claude/openai는 스텁)
+    music/            노래 검색 (key: 매칭 키, parse: YouTube 결과 정리, mock | youtube)
+    db/songs.ts       노래 고르기 (공유 풀 → 부족하면 YouTube 검색)
 ```
 
 브라우저는 Supabase를 직접 호출하지 않고 전부 `/api/*`를 거칩니다. 권한은 RLS가 지킵니다.

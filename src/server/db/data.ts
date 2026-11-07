@@ -3,9 +3,10 @@
 // the user_id filters here only keep results tidy.
 
 import type { PostgrestError, SupabaseClient, User } from "@supabase/supabase-js";
-import type { Artwork, DB, Entry, Profile, Scene, StyleId } from "@/lib/types";
+import type { Artwork, DB, Entry, Mood, Profile, Scene, StyleId } from "@/lib/types";
 import { debugLog } from "../debug";
 import { HttpError } from "../http";
+import { toSong } from "./songs";
 
 const DEFAULT_EXHIBITION_TITLE = "나의 전시";
 
@@ -31,7 +32,7 @@ export async function loadDb(sb: SupabaseClient, user: User): Promise<DB> {
     sb.from("entries").select("id, day, written_at, body").eq("user_id", user.id).order("written_at"),
     sb
       .from("daily_artworks")
-      .select("day, style, scene, summary, tags")
+      .select("day, style, scene, summary, tags, mood, song_pool(id, video_id, title, channel)")
       .eq("user_id", user.id)
       .eq("status", "done"),
     sb.from("exhibitions").select("id, title, description, is_public").eq("user_id", user.id).maybeSingle(),
@@ -53,6 +54,8 @@ export async function loadDb(sb: SupabaseClient, user: User): Promise<DB> {
       style: r.style as StyleId,
       summary: r.summary,
       tags: r.tags,
+      mood: (r.mood ?? null) as Mood | null,
+      song: r.song_pool ? toSong(r.song_pool as unknown as Parameters<typeof toSong>[0]) : null,
       entries: [],
     };
   }
@@ -117,9 +120,10 @@ export async function removeEntry(sb: SupabaseClient, userId: string, id: string
 export async function saveArtwork(
   sb: SupabaseClient,
   userId: string,
-  a: { date: string; scene: Scene; style: StyleId; summary: string; tags: string[] },
+  a: { date: string; scene: Scene; style: StyleId; summary: string; tags: string[]; mood?: Mood },
 ): Promise<void> {
   const { error } = await sb.from("daily_artworks").insert({
+    mood: a.mood ?? null,
     user_id: userId,
     day: a.date,
     style: a.style,

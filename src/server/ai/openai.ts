@@ -3,7 +3,7 @@
 // To implement:
 //   npm i openai
 //   set OPENAI_API_KEY in .env.local
-//   text: chat/responses call that returns { summary, tags, scene } as JSON
+//   text: chat/responses call that returns { summary, tags, scene, mood } as JSON (mood: one of MOODS in src/server/music/key.ts)
 //   image: gpt-image-1-mini, medium quality, 1024px (plan estimate $0.011 per image)
 // Image bytes need somewhere to live (Supabase Storage later) before imageUrl can be set.
 // Stub methods leave out the interface's parameters; add them back when implementing.

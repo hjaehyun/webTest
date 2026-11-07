@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Security smoke test for H1 / M1 / M4 (docs/review/2026-11-04-security-fix-*.md).
+# Security smoke test for H1 / M1 / M4 + song recommendation (docs/review/2026-11-04-security-fix-*.md).
 # Checks what can be checked without signing in. Read-only: no account is created.
 #
 #   bash scripts/security-smoke.sh http://localhost:3000
@@ -75,6 +75,12 @@ check "Origin: null -> 403" 403 -X POST "${J[@]}" -H 'Origin: null' -d '{}' "$BA
 check "GET /api/me from another Origin is not blocked -> 401" 401 -H 'Origin: https://evil.example' "$BASE/api/me"
 check "same Origin passes the CSRF check (-> 400, not 403)" 400 -X POST "${J[@]}" -H "Origin: $BASE" \
   -H "Host: $HOST" -d '{}' "$BASE/api/auth/login"
+
+echo "-- Song recommendation (song_pool writes are server-only; checked in songs e2e)"
+check "song without sign-in -> 401" 401 -X POST "${J[@]}" -d '{}' "$BASE/api/me/artworks/2026-11-04/song"
+check "song from another Origin -> 403" 403 -X POST "${J[@]}" -H 'Origin: https://evil.example' -d '{}' \
+  "$BASE/api/me/artworks/2026-11-04/song"
+check "song feedback with vote 2 -> 400" 400 -X POST "${J[@]}" -d '{"vote":2}' "$BASE/api/me/songs/1/feedback"
 
 rm -f /tmp/smoke_body.$$
 echo "== $pass passed, $failn failed"

@@ -66,6 +66,43 @@ create table if not exists public.ai_usage (
   count   int  not null default 0 check (count >= 0),
   primary key (user_id, day, kind)
 );
+-- 'song' added for song recommendation; the inline check above only applies to new databases.
+alter table public.ai_usage drop constraint if exists ai_usage_kind_check;
+alter table public.ai_usage add constraint ai_usage_kind_check
+  check (kind in ('summarize', 'draw', 'curate', 'song'));
+
+-- Song recommendation (docs/superpowers/specs/2026-11-05-song-recommendation-design.md).
+-- Shared pool keyed by mood | weather | time_of_day. No user_id and no diary text on purpose.
+-- Only the server (secret key) writes it. YouTube data older than 30 days is never picked and gets deleted.
+-- The value lists must match src/server/music/key.ts.
+create table if not exists public.song_pool (
+  id          bigint generated always as identity primary key,
+  mood        text not null check (mood in ('calm', 'upbeat', 'flutter', 'proud', 'lazy', 'tired', 'blue', 'nostalgic', 'busy', 'cozy')),
+  weather     text not null check (weather in ('clear', 'cloudy', 'rain', 'snow', 'hot', 'unknown')),
+  time_of_day text not null check (time_of_day in ('morning', 'day', 'night')),
+  video_id    text not null check (video_id ~ '^[A-Za-z0-9_-]{11}$'),
+  title       text not null check (char_length(title) <= 200),
+  channel     text not null check (char_length(channel) <= 100),
+  fetched_at  timestamptz not null default now(),
+  unique (mood, weather, time_of_day, video_id)
+);
+create index if not exists song_pool_key on public.song_pool (mood, weather, time_of_day, fetched_at);
+
+-- One reaction per user per pool song (1 = like, -1 = "다른 곡"). Own rows only; counts are
+-- aggregated inside pick_song(), so nobody sees who reacted.
+create table if not exists public.song_feedback (
+  user_id uuid     not null default auth.uid() references auth.users (id) on delete cascade,
+  song_id bigint   not null references public.song_pool (id) on delete cascade,
+  vote    smallint not null check (vote in (1, -1)),
+  primary key (user_id, song_id)
+);
+
+-- A picture's match key and song. song_id is only changed through set_artwork_song() below.
+alter table public.daily_artworks
+  add column if not exists mood        text check (mood in ('calm', 'upbeat', 'flutter', 'proud', 'lazy', 'tired', 'blue', 'nostalgic', 'busy', 'cozy')),
+  add column if not exists weather     text check (weather in ('clear', 'cloudy', 'rain', 'snow', 'hot', 'unknown')),
+  add column if not exists time_of_day text check (time_of_day in ('morning', 'day', 'night')),
+  add column if not exists song_id     bigint references public.song_pool (id) on delete set null;
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
@@ -76,7 +113,11 @@ revoke select on public.ai_usage from anon;
 -- Creating is limited to the columns the app sends; image_url/status/created_at stay server-side.
 -- Redrawing goes through redraw_artwork() below. Account deletion uses the secret key and is unaffected.
 revoke insert, update, delete on public.daily_artworks from anon, authenticated;
-grant insert (user_id, day, style, scene, summary, tags) on public.daily_artworks to authenticated;
+grant insert (user_id, day, style, scene, summary, tags, mood) on public.daily_artworks to authenticated;
+-- Song pool: readable by everyone (public exhibitions show songs), written only with the secret key.
+grant select on public.song_pool to anon;
+revoke insert, update, delete on public.song_pool from anon, authenticated;
+revoke all on public.song_feedback from anon;
 
 -- ---------------------------------------------------------------- helpers
 
@@ -171,7 +212,7 @@ begin
   if uid is null then
     raise exception 'sign-in required' using errcode = '42501';
   end if;
-  lim := case p_kind when 'summarize' then 20 when 'draw' then 10 when 'curate' then 20 end;
+  lim := case p_kind when 'summarize' then 20 when 'draw' then 10 when 'curate' then 20 when 'song' then 10 end;
   if lim is null then
     raise exception 'unknown AI kind: %', p_kind using errcode = '22023';
   end if;
@@ -198,6 +239,7 @@ create or replace function public.redraw_artwork(
 returns void language plpgsql security definer set search_path = '' as $$
 declare
   uid    uuid := auth.uid();
+  old    public.daily_artworks%rowtype;
   old_id bigint;
   new_id bigint;
   hung   jsonb;
@@ -206,9 +248,10 @@ begin
     raise exception 'sign-in required' using errcode = '42501';
   end if;
 
-  select id into old_id from public.daily_artworks
+  select * into old from public.daily_artworks
    where user_id = uid and day = p_day
    for update;
+  old_id := old.id;
   if old_id is null then
     raise exception '그림이 없는 날이에요' using errcode = 'P0002';
   end if;
@@ -219,8 +262,10 @@ begin
     from public.exhibition_items where artwork_id = old_id;
 
   delete from public.daily_artworks where id = old_id;
-  insert into public.daily_artworks (user_id, day, style, scene, summary, tags)
-    values (uid, p_day, p_style, p_scene, p_summary, coalesce(p_tags, '{}'))
+  -- The song and its match key stay with the day (a redraw keeps the picture's song).
+  insert into public.daily_artworks (user_id, day, style, scene, summary, tags, mood, weather, time_of_day, song_id)
+    values (uid, p_day, p_style, p_scene, p_summary, coalesce(p_tags, '{}'),
+            old.mood, old.weather, old.time_of_day, old.song_id)
     returning id into new_id;
 
   insert into public.exhibition_items (exhibition_id, artwork_id, position, note)
@@ -231,6 +276,49 @@ $$;
 revoke execute on function public.redraw_artwork(date, text, text, text, text[]) from public, anon;
 grant execute on function public.redraw_artwork(date, text, text, text, text[]) to authenticated;
 
+-- Picks one pool song for a match key by weighted random (Efraimidis-Spirakis):
+-- weight = max(0.2, 1 + likes - 0.5 * skips). A null weather or time means "any".
+-- Only songs fetched in the last 30 days, minus p_exclude. Returns null when nothing fits.
+-- security definer so it can count everyone's reactions without exposing them.
+create or replace function public.pick_song(p_mood text, p_weather text, p_time text, p_exclude bigint[])
+returns bigint language sql volatile security definer set search_path = '' as $$
+  select p.id
+    from public.song_pool p
+    left join (select song_id,
+                      count(*) filter (where vote = 1)  as likes,
+                      count(*) filter (where vote = -1) as skips
+                 from public.song_feedback group by song_id) f on f.song_id = p.id
+   where p.mood = p_mood
+     and (p_weather is null or p.weather = p_weather)
+     and (p_time is null or p.time_of_day = p_time)
+     and p.fetched_at > now() - interval '30 days'
+     and not (p.id = any (coalesce(p_exclude, '{}')))
+   order by -ln(1 - random()) / greatest(0.2, 1 + coalesce(f.likes, 0) - 0.5 * coalesce(f.skips, 0))
+   limit 1;
+$$;
+revoke execute on function public.pick_song(text, text, text, bigint[]) from public, anon;
+grant execute on function public.pick_song(text, text, text, bigint[]) to authenticated;
+
+-- Sets the song (or none) and match key of the caller's own picture for a day.
+-- security definer because users may not update pictures directly (M3). Only auth.uid()'s row;
+-- an unknown song id fails the foreign key (23503), bad weather/time fail the check constraints.
+create or replace function public.set_artwork_song(p_day date, p_song_id bigint, p_weather text, p_time text)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then
+    raise exception 'sign-in required' using errcode = '42501';
+  end if;
+  update public.daily_artworks
+     set song_id = p_song_id, weather = p_weather, time_of_day = p_time
+   where user_id = auth.uid() and day = p_day;
+  if not found then
+    raise exception '그림이 없는 날이에요' using errcode = 'P0002';
+  end if;
+end;
+$$;
+revoke execute on function public.set_artwork_song(date, bigint, text, text) from public, anon;
+grant execute on function public.set_artwork_song(date, bigint, text, text) to authenticated;
+
 -- ---------------------------------------------------------------- row level security
 
 alter table public.profiles         enable row level security;
@@ -239,6 +327,8 @@ alter table public.daily_artworks   enable row level security;
 alter table public.exhibitions      enable row level security;
 alter table public.exhibition_items enable row level security;
 alter table public.ai_usage         enable row level security;
+alter table public.song_pool        enable row level security;
+alter table public.song_feedback    enable row level security;
 
 -- profiles
 drop policy if exists "profiles: own" on public.profiles;
@@ -304,6 +394,17 @@ create policy "items: write own" on public.exhibition_items
 drop policy if exists "ai_usage: read own" on public.ai_usage;
 create policy "ai_usage: read own" on public.ai_usage
   for select to authenticated using (user_id = (select auth.uid()));
+
+-- song_pool: anyone may read; no write policy, so only the secret key (bypasses RLS) can write
+drop policy if exists "song_pool: read" on public.song_pool;
+create policy "song_pool: read" on public.song_pool
+  for select to anon, authenticated using (true);
+
+-- song_feedback: your own reactions only
+drop policy if exists "song_feedback: own" on public.song_feedback;
+create policy "song_feedback: own" on public.song_feedback
+  for all to authenticated
+  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
 
 -- ---------------------------------------------------------------- storage (for the image AI, later)
 -- Public bucket: anyone with a picture's URL can open it; paths start with the owner's id.

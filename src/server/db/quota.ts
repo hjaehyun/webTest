@@ -1,12 +1,12 @@
 // Per-user daily AI call limit. The count lives in public.ai_usage and only the
 // consume_ai_quota() function (supabase/schema.sql) can change it, so users can't reset it themselves.
-// Limits per day (Asia/Seoul): summarize 20, draw 10, curate 20 — edit them in schema.sql.
+// Limits per day (Asia/Seoul): summarize 20, draw 10, curate 20, song 10 — edit them in schema.sql.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { secLog } from "../debug";
 import { HttpError } from "../http";
 
-export type AiKind = "summarize" | "draw" | "curate";
+export type AiKind = "summarize" | "draw" | "curate" | "song";
 
 /** Counts one AI call for the signed-in user; throws 429 when today's limit is used up. */
 export async function consumeAiQuota(sb: SupabaseClient, userId: string, kind: AiKind): Promise<void> {
