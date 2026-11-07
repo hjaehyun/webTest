@@ -114,6 +114,10 @@ revoke select on public.ai_usage from anon;
 -- Redrawing goes through redraw_artwork() below. Account deletion uses the secret key and is unaffected.
 revoke insert, update, delete on public.daily_artworks from anon, authenticated;
 grant insert (user_id, day, style, scene, summary, tags, mood) on public.daily_artworks to authenticated;
+-- Fragments: editing may only change the text. id, day, written_at and user_id stay as written,
+-- so an edit can't move a fragment to another day (e.g. into a closed one) or change its time.
+revoke update on public.entries from anon, authenticated;
+grant update (body) on public.entries to authenticated;
 -- Song pool: readable by everyone (public exhibitions show songs), written only with the secret key.
 grant select on public.song_pool to anon;
 revoke insert, update, delete on public.song_pool from anon, authenticated;
@@ -340,7 +344,7 @@ create policy "profiles: owner of a public exhibition" on public.profiles
   for select to anon, authenticated
   using (exists (select 1 from public.exhibitions e where e.user_id = profiles.user_id and e.is_public));
 
--- entries: private; can only be added or removed while the day is still open
+-- entries: private; can only be added, edited or removed while the day is still open
 drop policy if exists "entries: read own" on public.entries;
 create policy "entries: read own" on public.entries
   for select to authenticated using (user_id = (select auth.uid()));
@@ -352,6 +356,11 @@ drop policy if exists "entries: remove from open day" on public.entries;
 create policy "entries: remove from open day" on public.entries
   for delete to authenticated
   using (user_id = (select auth.uid()) and not public.day_is_closed(user_id, day));
+drop policy if exists "entries: edit on open day" on public.entries;
+create policy "entries: edit on open day" on public.entries
+  for update to authenticated
+  using (user_id = (select auth.uid()) and not public.day_is_closed(user_id, day))
+  with check (user_id = (select auth.uid()) and not public.day_is_closed(user_id, day));
 
 -- daily_artworks
 -- (M3) read and create only; no update/delete policy, so direct changes are refused
