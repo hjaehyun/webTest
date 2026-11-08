@@ -56,7 +56,7 @@ GEMINI_MODELS_CURATE=gemini-3.6-flash,gemini-3.1-flash-lite
 1. 라우트는 지금처럼 로그인 확인 → 사용자별 하루 한도(`consume_ai_quota`, summarize 20 / curate 20) → 텍스트 AI를 호출한다.
 2. `gemini.ts`는 그 기능의 모델 목록을 앞에서부터 시도한다.
    - 성공하면 결과를 반환한다.
-   - 429(한도), 5xx, 네트워크 오류, **45초 초과**, 응답 형식 오류 → 다음 모델로 넘어간다. (처음 8초였으나 2026-11-08 실측에서 무료 3.8 Flash가 최대 40초 걸려 45초로 늘림. 마감→그림까지의 실제 시간을 보며 다시 조정한다. 라우트 `maxDuration = 60`.)
+   - 429(한도), 5xx, 네트워크 오류, **60초 초과**, 응답 형식 오류 → 다음 모델로 넘어간다. (8초 → 45초(실측 최대 40초) → 60초(2026-11-08 실측에서 45초도 넘김). 라우트 `maxDuration = 90`, Vercel Hobby 최대 300초 안.)
    - 400(요청 오류)이나 키 오류는 다음 모델에서도 똑같이 실패하므로 바로 mock으로 간다. 로그에 원인을 남긴다.
 3. 목록을 다 실패하면 mock 결과를 반환한다. 사용자는 실패 화면 대신 "임시 요약"을 받는다.
 4. 응답은 **JSON 스키마로 고정**한다(Gemini structured output: `responseMimeType: application/json` + `responseSchema`).

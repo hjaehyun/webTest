@@ -4,8 +4,8 @@
 
 import { NextResponse } from "next/server";
 
-// A slow first model can take up to 45s before the fallback model answers (src/server/ai/gemini.ts).
-export const maxDuration = 60;
+// A slow first model can take up to 60s before the fallback model answers (src/server/ai/gemini.ts).
+export const maxDuration = 90;
 import type { CurationInput } from "@/lib/types";
 import { textAI } from "@/server/ai";
 import { requireUser } from "@/server/auth";

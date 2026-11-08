@@ -18,9 +18,9 @@ import type { TextProvider } from "./types";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 const API_REVISION = "2026-05-20";
-// Free-tier Flash measured up to ~40s (2026-11-08); 45s per model, then the next one. Retune after
-// watching real close-to-picture times (SPL rev 2). Routes allow 60s (maxDuration) for this.
-export const TIMEOUT_MS = 45_000;
+// Free-tier Flash measured 37s and >45s (2026-11-08); 60s per model, then the next one (SPL rev 3).
+// Routes allow 90s (maxDuration) so the fallback model still has time to answer.
+export const TIMEOUT_MS = 60_000;
 
 const models = (envName: string): string[] =>
   (process.env[envName] ?? "")

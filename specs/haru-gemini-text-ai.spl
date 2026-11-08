@@ -94,7 +94,7 @@ DECISION_SCOPE {
   ELIF AI_TEXT_PROVIDER == "gemini" AND NOT GEMINI_API_KEY EXISTS { SET text_ai = "mock"  EMIT WARNING "GEMINI_API_KEY 없음: mock으로 동작" }
   ELSE { SET text_ai = "mock" }
 
-  IF gemini_status == 429 OR gemini_status >= 500 OR elapsed_ms > 45000 OR response_invalid { SET next = "다음 모델" }
+  IF gemini_status == 429 OR gemini_status >= 500 OR elapsed_ms > 60000 OR response_invalid { SET next = "다음 모델" }
   ELIF gemini_status == 400 OR gemini_status == 401 OR gemini_status == 403 { SET next = "mock" }
   ELIF models_exhausted { SET next = "mock"  SET source = "fallback" }
 
@@ -125,7 +125,7 @@ DECISION_SCOPE {
     GATE = AUTO
   }
   PHASE Gemini제공자 {
-    DESCRIPTION = "src/server/ai/gemini.ts: REST Interactions API(/v1beta/interactions, store false)를 fetch로 호출 (모델당 45초 제한, 라우트 maxDuration 60초), responseMimeType application/json + responseSchema, 기능별 env 모델 목록, TextProvider 구현. index.ts에 gemini 선택지, .env.example 4개 변수"
+    DESCRIPTION = "src/server/ai/gemini.ts: REST Interactions API(/v1beta/interactions, store false)를 fetch로 호출 (모델당 60초 제한, 라우트 maxDuration 90초), responseMimeType application/json + responseSchema, 기능별 env 모델 목록, TextProvider 구현. index.ts에 gemini 선택지, .env.example 4개 변수"
     DEPENDS_ON = 대체로직
     TRACE = SUMMARY
     SCAN src FOR "gemini-3"
@@ -255,7 +255,7 @@ DECISION_SCOPE {
   }
   RULE 대체순서 {
     SEVERITY = CRITICAL
-    ASSERT 429 → 다음 모델, 5xx → 다음 모델, 45초 초과 → 다음 모델, 형식 오류 → 다음 모델, 400 → mock
+    ASSERT 429 → 다음 모델, 5xx → 다음 모델, 60초 초과 → 다음 모델, 형식 오류 → 다음 모델, 400 → mock
     ON_FAIL → EMIT ERROR "fallback.ts 분류 규칙이 @BRANCH와 다르다"
   }
   RULE 모델명env {
