@@ -92,7 +92,7 @@ function Today() {
       const summary = await summarizeDay(entries);
       setStage(2);
       const { scene } = await drawScene(summary, style);
-      saveArtwork({ date, scene, style, summary: summary.summary, tags: summary.tags, mood: summary.mood, entries });
+      saveArtwork({ date, scene, style, summary: summary.summary, tags: summary.tags, mood: summary.mood, songQuery: summary.songQuery, summarySource: summary.source, entries });
       setStage(3);
     } catch (err) {
       // Entries stay as drafts, so the user can simply try closing again.

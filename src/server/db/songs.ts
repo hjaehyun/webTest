@@ -46,22 +46,30 @@ async function loadSong(sb: SupabaseClient, id: number): Promise<Song | null> {
  * Fills the pool for a key from the music provider. Never fails the request: a search error, timeout,
  * quota or missing key (safeSearch) or a pool write error is logged and the pool answers as it is.
  */
-async function refill(key: SongKey): Promise<void> {
-  const hits = await safeSearch(music(), songQuery(key));
-  if (!hits.length) return;
+async function refill(key: SongKey, query: string): Promise<number[]> {
+  const hits = await safeSearch(music(), query);
+  if (!hits.length) return [];
   const now = new Date().toISOString();
   const rows = hits.map((h) => ({ mood: key.mood, weather: key.weather, time_of_day: key.time, video_id: h.videoId, title: h.title, channel: h.channel, fetched_at: now }));
-  const { error } = await supabaseAdmin().from("song_pool").upsert(rows, { onConflict: "mood,weather,time_of_day,video_id" });
+  const { data, error } = await supabaseAdmin()
+    .from("song_pool")
+    .upsert(rows, { onConflict: "mood,weather,time_of_day,video_id" })
+    .select("id, video_id");
   if (error) {
     console.warn("[song] pool write failed:", error.code, error.message);
-    return;
+    return [];
   }
-  debugLog("song", "pool refilled", { key, count: rows.length });
+  debugLog("song", "searched", { key, query, count: rows.length });
+  // Pool ids in YouTube's ranking order (the upsert may return rows in any order).
+  const idOf = new Map((data ?? []).map((r) => [r.video_id as string, r.id as number]));
+  return hits.map((h) => idOf.get(h.videoId)).filter((id): id is number => id != null);
 }
 
 /**
- * Gives the day's picture a song. `reroll` = "다른 곡": the current song gets a -1 and is never offered
- * to this user again. Without reroll an existing song is kept (the call is idempotent).
+ * Gives the day's picture a song. The first song comes from a YouTube search with the day's song_query
+ * (written by the text AI) or the fixed key words; if searching fails or finds nothing new, from the pool.
+ * `reroll` = "다른 곡": from the pool; the current song gets a -1 and is never offered to this user again.
+ * Without reroll an existing song is kept (the call is idempotent).
  * unchanged: true when no other song was available and the current one stays.
  */
 export async function assignSong(
@@ -71,12 +79,12 @@ export async function assignSong(
   reroll: boolean,
 ): Promise<{ song: Song | null; unchanged: boolean }> {
   const [artRes, entryRes] = await Promise.all([
-    sb.from("daily_artworks").select("id, mood, song_id").eq("user_id", userId).eq("day", date).maybeSingle(),
+    sb.from("daily_artworks").select("id, mood, song_id, song_query").eq("user_id", userId).eq("day", date).maybeSingle(),
     sb.from("entries").select("written_at").eq("user_id", userId).eq("day", date),
   ]);
   check(artRes.error);
   check(entryRes.error);
-  const art = artRes.data as { id: number; mood: string | null; song_id: number | null } | null;
+  const art = artRes.data as { id: number; mood: string | null; song_id: number | null; song_query: string | null } | null;
   if (!art) throw new HttpError(404, "이날은 그림이 없어요");
 
   const current = art.song_id;
@@ -111,8 +119,6 @@ export async function assignSong(
   check(recentRes.error);
   check(skipRes.error);
   check(countRes.error);
-  if ((countRes.count ?? 0) < MIN_CANDIDATES) await refill(key);
-
   const exclude = [
     ...new Set([
       ...(recentRes.data ?? []).map((r) => r.song_id as number),
@@ -121,13 +127,23 @@ export async function assignSong(
     ]),
   ];
 
-  // Exact key first, then widen: any time of day, then any weather too.
   let picked: number | null = null;
-  for (const [weather, time] of [
+
+  if (!reroll) {
+    // First song: search with the words the text AI wrote for this day (fixed words without them),
+    // take YouTube's best match this user hasn't had lately. The results also join the key's pool.
+    const ranked = await refill(key, art.song_query ?? songQuery(key));
+    picked = ranked.find((id) => !exclude.includes(id)) ?? null;
+  } else if ((countRes.count ?? 0) < MIN_CANDIDATES) {
+    await refill(key, songQuery(key));
+  }
+
+  // From the pool ("다른 곡", or no search result): exact key first, then any time, then any weather.
+  for (const [weather, time] of picked != null ? [] : ([
     [key.weather, key.time],
     [key.weather, null],
     [null, null],
-  ] as const) {
+  ] as const)) {
     const { data, error } = await sb.rpc("pick_song", { p_mood: key.mood, p_weather: weather, p_time: time, p_exclude: exclude });
     check(error);
     if (data != null) {

@@ -56,3 +56,17 @@ export function timeOfDay(isoTimes: string[]): TimeOfDay {
 export function songQuery(k: SongKey): string {
   return [WEATHER_WORDS[k.weather], TIME_WORDS[k.time], MOOD_WORDS[k.mood], "노래"].filter(Boolean).join(" ");
 }
+
+const SONG_QUERY_MAX = 40;
+
+/**
+ * A search query the text AI wrote for YouTube. It may only hold genre/mood/situation words, so
+ * anything that looks like personal data (digits: phone or student numbers, @, links) is refused and
+ * the fixed-word songQuery(key) is used instead. Names and places are kept out by the prompt.
+ */
+export function isSafeSongQuery(v: unknown): v is string {
+  if (typeof v !== "string") return false;
+  const q = v.trim();
+  if (q.length === 0 || [...q].length > SONG_QUERY_MAX) return false;
+  return !/[0-9@]|https?:|www\./i.test(q);
+}

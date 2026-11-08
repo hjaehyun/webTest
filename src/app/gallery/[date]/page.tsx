@@ -76,7 +76,7 @@ function Detail() {
       trace("summarized", summary);
       const { scene } = await drawScene(summary, style);
       trace("drawn", { scene });
-      await redrawArtwork(date, { scene, style, summary: summary.summary, tags: summary.tags });
+      await redrawArtwork(date, { scene, style, summary: summary.summary, tags: summary.tags, summarySource: summary.source });
       trace("saved");
     } catch (err) {
       console.error(err);
@@ -141,6 +141,11 @@ function Detail() {
         <section className="card">
           <h2 className={`eyebrow ${s.h}`}>AI가 정리한 장면</h2>
           <p className={s.summary}>{art.summary}</p>
+          {art.summarySource === "fallback" && (
+            <p className={s.fallback} role="note">
+              임시 요약 · 다시 그리기로 바꿀 수 있어요
+            </p>
+          )}
           {art.tags.length > 0 && (
             <div className={s.tags}>
               {art.tags.map((t) => (

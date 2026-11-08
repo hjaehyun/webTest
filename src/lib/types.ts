@@ -32,6 +32,8 @@ export type Artwork = {
   entries: Entry[];
   mood?: Mood | null; // picked by the text AI; keys the song recommendation
   song?: Song | null; // null until one is recommended
+  songQuery?: string; // sent once when saving; never read back
+  summarySource?: "ai" | "fallback"; // this session only: fallback = AI unavailable, mock summary
 };
 
 export type Exhibition = {
@@ -45,7 +47,14 @@ export type Exhibition = {
 // API payloads shared by the client (lib/ai.ts) and the server routes (app/api/*).
 
 /** Text AI result: fragments -> one scene description + tags. */
-export type DaySummary = { summary: string; tags: string[]; scene: Scene; mood: Mood };
+export type DaySummary = {
+  summary: string;
+  tags: string[];
+  scene: Scene;
+  mood: Mood;
+  songQuery?: string; // YouTube search words the text AI wrote (genre/mood only); fixed words when absent
+  source?: "ai" | "fallback"; // fallback = the AI was unavailable and mock answered (shown, not stored)
+};
 
 /** Image AI result. imageUrl stays null until a real image provider is wired up. */
 export type Drawing = { scene: Scene; imageUrl: string | null };

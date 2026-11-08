@@ -1,0 +1,287 @@
+@SCHEMA = "SPL-SYNTAX-v1.2"
+
+@META {
+  type = "개발지시"
+  version = "1.0"
+  reader = "코딩 에이전트 (Claude Code)"
+  success = "배포 환경에서 마감하면 Gemini가 장면 요약·tags·scene·mood·songQuery를 JSON으로 돌려주고, 그 검색어로 고른 YouTube 노래가 그림에 붙으며, 큐레이터 해설도 Gemini가 쓴다. 1순위 모델이 막히면 2순위, 둘 다 막히면 mock으로 대체되어 마감·큐레이터가 실패 화면 없이 끝난다"
+  failure = "Gemini 오류나 한도 초과로 마감이 실패하거나, API 키가 브라우저·저장소에 노출되거나, 검색어에 일기 원문·개인 정보가 들어가 YouTube로 나가거나, song_query·mood가 공개 전시로 새거나, 기존 테스트(npm test, songs e2e, security-smoke)가 깨진다"
+  constraint = "웹프로그래밍 수업 팀 프로젝트. Gemini API 무료 등급만 사용. 설계 문서 docs/superpowers/specs/2026-11-08-gemini-text-ai-design.md와 노래 추천 설계 docs/superpowers/specs/2026-11-05-song-recommendation-design.md를 따르되, 이 SPL과 다르면 이 SPL이 우선한다"
+}
+
+@INTENT {
+  CORE = "비용 없이 텍스트 AI(장면 정리·큐레이터)를 실제 AI로 바꾸고, 기능별로 다른 모델을 써서 무료 한도를 넓히며, 노래 검색어까지 AI가 그날에 맞게 쓴다"
+  MUST_PRESERVE [
+    "기존 라우트 계약: POST /api/summarize, POST /api/curate, POST /api/me/artworks/[date]/song 의 요청·응답 형태 (필드 추가만 허용)"
+    "사용자별 하루 한도 consume_ai_quota (summarize 20, curate 20, song 10)"
+    "song_pool은 secret key로만 쓰고 user_id·일기 텍스트를 넣지 않는다"
+    "공개 전시 응답에는 노래의 videoId·title·channel만 나간다"
+    "AI_TEXT_PROVIDER=mock 일 때 지금과 똑같이 동작한다"
+    "기존 시험 통과: npm test, songs e2e 25항목, scripts/security-smoke.sh 28항목"
+  ]
+  MUST_NOT [
+    "API 키를 코드·저장소·브라우저 번들·로그에 남기기"
+    "Gemini 오류·한도 초과 때문에 마감이나 큐레이터를 실패로 끝내기"
+    "Pro 계열 등 무료 등급이 없는 모델을 기본 배정에 넣기"
+    "모델 이름을 코드에 고정하기 (env로만)"
+    "일기 원문 문장, 사람 이름, 장소, 학교, 연락처를 songQuery로 YouTube에 보내기"
+    "song_query 또는 mood를 공개 전시 API나 song_pool에 넣기"
+    "새 npm 패키지 추가 (Gemini는 REST를 fetch로 호출)"
+    "로컬 개발·e2e에서 Gemini 무료 한도 쓰기 (기본 mock)"
+  ]
+}
+
+DECISION_SCOPE {
+  STRATEGY = USER
+  REQUIREMENTS = USER
+  STRUCTURE = BOTH
+  EXPRESSION = AI
+  VALIDATION = BOTH
+  FINAL_APPROVAL = USER
+}
+
+@ENV {
+  LANG = "TypeScript 5 (Node.js 24.14.1)"
+  FRAMEWORK = "Next.js 15.5.28 App Router + React 19.1"
+  RUNTIME = "Windows 11 개발 PC, 배포는 Vercel 서버리스 (Node.js)"
+  TOOLCHAIN = "npm, tsc, eslint, node --test (Node 24 타입 제거), @supabase/supabase-js 2.118, @supabase/ssr 0.12"
+  ROOT = "C:\Users\Jaehyeon\Desktop\26_2\웹프로그래밍\하루조각\haru-jogak"
+  REPO = "GitHub hjaehyun/webTest (로컬 하루조각은 git 아님, 클론에 복사해 커밋)"
+  BRANCH = "작업 후 main에 push"
+  BUILD = "npm run build"
+  RUN = "npm run dev (http://localhost:3000)"
+  DB supabase {
+    PROVIDER = "Supabase Postgres (RLS)"
+    LOCATION = "Supabase 프로젝트 (env SUPABASE_URL)"
+    SECRET_REF = "SUPABASE_SECRET_KEY"
+    CONFIG_REF = "haru-jogak/supabase/schema.sql (SQL Editor에서 사람이 실행)"
+  }
+  INFRA {
+    배포 = "Vercel 자동 배포 dayily-diary-seven.vercel.app"
+    텍스트AI = "Google Gemini API 무료 등급, REST generativelanguage.googleapis.com"
+    음악검색 = "YouTube Data API v3 search.list"
+  }
+  CONSTRAINT [
+    "Gemini 키는 env GEMINI_API_KEY 로만 읽는다 (서버 전용)"
+    "모델 목록은 env GEMINI_MODELS_SUMMARIZE, GEMINI_MODELS_CURATE (쉼표 구분)"
+    "Gemini 한도는 프로젝트 단위이고 태평양 시간 자정(한국 16~17시)에 초기화된다"
+    "YouTube 검색 한도는 하루 약 100회이며 키는 env YOUTUBE_API_KEY"
+    "schema.sql 변경은 재실행해도 안전해야 한다 (IF NOT EXISTS, CREATE OR REPLACE)"
+  ]
+  FORBIDDEN_ENV [
+    ".env.local 내용 출력·커밋"
+    "Supabase SQL을 에이전트가 직접 실행 (사람이 SQL Editor에서 실행)"
+    "force push"
+  ]
+}
+
+@INPUT {
+  REQUIRED {
+    design_gemini: FILE(.md)
+    design_song: FILE(.md)
+    entries: LIST<TEXT[1..140]>
+    curation_input: TEXT
+  }
+  OPTIONAL {
+    gemini_api_key_ref: TEXT
+    model_list_summarize: TEXT
+    model_list_curate: TEXT
+  }
+}
+
+@BRANCH {
+  IF AI_TEXT_PROVIDER == "gemini" AND GEMINI_API_KEY EXISTS { SET text_ai = "gemini" }
+  ELIF AI_TEXT_PROVIDER == "gemini" AND NOT GEMINI_API_KEY EXISTS { SET text_ai = "mock"  EMIT WARNING "GEMINI_API_KEY 없음: mock으로 동작" }
+  ELSE { SET text_ai = "mock" }
+
+  IF gemini_status == 429 OR gemini_status >= 500 OR elapsed_ms > 45000 OR response_invalid { SET next = "다음 모델" }
+  ELIF gemini_status == 400 OR gemini_status == 401 OR gemini_status == 403 { SET next = "mock" }
+  ELIF models_exhausted { SET next = "mock"  SET source = "fallback" }
+
+  IF songQuery_valid { SET search_query = songQuery }
+  ELSE { SET search_query = "고정 단어 검색어 (key.ts songQuery)" }
+
+  IF reroll == false AND youtube_available { SET pick = "검색어로 YouTube 1회 검색 → 첫 미제외 곡, 결과는 mood 키 풀에 저장" }
+  ELIF reroll == false { SET pick = "mood 키 풀에서 가중 랜덤" }
+  ELSE { SET pick = "mood 키 풀에서 가중 랜덤 (지금 곡 -1)" }
+
+  FALLBACK { ASK "모델 응답을 분류할 수 없다. 어떻게 처리할까?" OPTIONS["다음 모델로", "mock으로", "작업 중단"] }
+}
+
+@PIPELINE {
+  PHASE 기준확인 {
+    DESCRIPTION = "이 SPL 최신 리비전과 두 설계 문서를 읽고, AI Studio 한도 페이지의 모델별 무료 한도와 모델 이름이 그대로인지 재현님께 확인받는다"
+    TRACE = SUMMARY
+    ASK "AI Studio에서 확인한 모델별 무료 RPM·RPD와 모델 이름" OPTIONS["설계대로", "모델 이름 변경", "한도 숫자 알려줌"]
+    OUTPUT → 기준rev
+    GATE = CONFIRM
+  }
+  PHASE 대체로직 {
+    DESCRIPTION = "src/server/ai/fallback.ts: 모델 목록을 순서대로 시도하고 분류 규칙(@BRANCH)대로 다음 모델 또는 mock으로 가는 순수 함수. 응답 검증 함수 포함"
+    DEPENDS_ON = 기준확인
+    TRACE = SUMMARY
+    RUN npm test
+    OUTPUT → fallback.ts
+    GATE = AUTO
+  }
+  PHASE Gemini제공자 {
+    DESCRIPTION = "src/server/ai/gemini.ts: REST Interactions API(/v1beta/interactions, store false)를 fetch로 호출 (모델당 45초 제한, 라우트 maxDuration 60초), responseMimeType application/json + responseSchema, 기능별 env 모델 목록, TextProvider 구현. index.ts에 gemini 선택지, .env.example 4개 변수"
+    DEPENDS_ON = 대체로직
+    TRACE = SUMMARY
+    SCAN src FOR "gemini-3"
+    ON_FAIL → EMIT ERROR "모델 이름이 코드에 박혀 있다. env로 옮긴다"
+    OUTPUT → gemini.ts
+    GATE = AUTO
+  }
+  PHASE 검색어 {
+    DESCRIPTION = "DaySummary에 songQuery·source 추가, mock은 key.ts 고정 검색어 사용. validate.ts에 songQuery 검사(1~40자, 숫자·@·URL 금지). schema.sql: daily_artworks.song_query 컬럼 + insert 권한, redraw_artwork가 song_query 복사. 저장 경로(store→/api/me/artworks)에 songQuery 추가"
+    DEPENDS_ON = Gemini제공자
+    TRACE = SUMMARY
+    OUTPUT → songQuery
+    GATE = AUTO
+  }
+  PHASE 스키마실행 {
+    DESCRIPTION = "변경된 schema.sql 노래 구간을 재현님께 드리고 SQL Editor 실행을 요청한 뒤, 확인 스크립트로 song_query 컬럼과 권한을 검사한다"
+    DEPENDS_ON = 검색어
+    TRACE = SUMMARY
+    OUTPUT → 스키마확인
+    GATE = CONFIRM
+  }
+  PHASE 노래흐름 {
+    DESCRIPTION = "songs.ts assignSong: reroll이 아니면 song_query(없으면 고정 검색어)로 YouTube 1회 검색 → 제외 목록 밖 첫 곡 선택, 결과는 mood 키 풀에 upsert. 검색 실패·한도 초과·결과 없음이면 풀에서 가중 랜덤. reroll은 풀에서"
+    DEPENDS_ON = 스키마실행
+    TRACE = SUMMARY
+    OUTPUT → songs.ts
+    GATE = AUTO
+  }
+  PHASE 화면 {
+    DESCRIPTION = "그림 상세: source가 fallback이면 '임시 요약 · 다시 그리기로 바꿀 수 있어요'. 가입 화면과 /guide에 Gemini 전송 안내 문구. 조각글에 이름·연락처를 쓰지 말라는 안내"
+    DEPENDS_ON = 노래흐름
+    TRACE = SUMMARY
+    OUTPUT → 화면
+    GATE = AUTO
+  }
+  PHASE 시험 {
+    DESCRIPTION = "npm test(대체로직·검증·검색어), tsc, lint, build, songs e2e(mock), security-smoke, 브라우저 마감 흐름. 그다음 재현님 확인 후 실제 Gemini 키로 마감 1회·큐레이터 1회 호출해 어떤 모델이 답했는지 로그 확인"
+    DEPENDS_ON = 화면
+    TRACE = FULL
+    RUN npm test
+    REVIEW 실제 Gemini 1회 호출 결과
+    OUTPUT → 시험결과
+    GATE = CONFIRM
+  }
+  PHASE 반영 {
+    DESCRIPTION = "클론 pull → 변경 복사(.env.local 제외) → 커밋(Co-Authored-By 줄) → main에 push → Vercel 배포 smoke. Vercel 환경변수(AI_TEXT_PROVIDER, GEMINI_API_KEY, 모델 목록)는 재현님이 설정"
+    DEPENDS_ON = 시험
+    TRACE = SUMMARY
+    OUTPUT → 배포
+    GATE = CONFIRM
+  }
+  PHASE 보고 {
+    DESCRIPTION = "기준 rev, 실행 명령, 실제 시험 결과를 report/YYYY-MM-DD_작업보고서.md와 대화로 보고하고 CLAUDE.md를 갱신한다"
+    DEPENDS_ON = 반영
+    TRACE = SUMMARY
+    OUTPUT → 작업보고서
+    GATE = AUTO
+  }
+}
+
+@TEMPLATE {
+  UNIT summarize_response {
+    STRUCT {
+      summary: TEXT[1..500]
+      tags: LIST<TEXT[1..20]>
+      scene: ENUM[day, cat, rain, park, cafe, night]
+      mood: ENUM[calm, upbeat, flutter, proud, lazy, tired, blue, nostalgic, busy, cozy]
+      songQuery: TEXT[1..40]
+    }
+    RULE = "Gemini responseSchema와 서버 검증이 같은 규칙을 쓴다. tags는 최대 10개. songQuery는 장르·분위기·상황 단어만"
+  }
+  UNIT curate_response {
+    STRUCT {
+      headline: TEXT[1..60]
+      body: TEXT[1..600]
+    }
+    RULE = "기간 이름, 그림 수, 자주 나온 태그, 장면 요약들만 입력으로 쓴다. 조각글 원문은 보내지 않는다"
+  }
+  UNIT model_routing {
+    STRUCT {
+      summarize: LIST<TEXT>
+      curate: LIST<TEXT>
+    }
+    RULE = "기본값 summarize = gemini-3.8-flash, gemini-3.5-flash-lite / curate = gemini-3.6-flash, gemini-3.1-flash-lite. 목록 끝 다음은 항상 mock"
+  }
+  UNIT summary_result {
+    STRUCT {
+      body: summarize_response
+      source: ENUM[ai, fallback]
+    }
+    RULE = "source는 화면 표시에만 쓰고 DB에 저장하지 않는다"
+  }
+  MAP {
+    [POST /api/summarize] → summary_result
+    [POST /api/curate] → curate_response
+    [env 모델 목록] → model_routing
+  }
+}
+
+@STYLE {
+  SCOPE[*] {
+    "화면 문구는 하루조각 기존 말투: 짧은 해요체"
+    DENY [ "에러 코드나 영어 원문을 사용자에게 그대로 노출" ]
+    REPLACE { "fallback" → "임시 요약" }
+  }
+  SCOPE[프롬프트] {
+    "Gemini 프롬프트는 한국어. 장면 요약은 그림 한 장으로 그릴 수 있게 한 문단, 서로 다른 장면은 시간 순으로 조화롭게"
+    DENY [ "일기 원문 문장 그대로 songQuery에 옮기기", "사람 이름·장소·학교를 songQuery에 넣기" ]
+    EXAMPLE {
+      GOOD = "songQuery: 비 오는 밤 잔잔한 어쿠스틱"
+      BAD = "songQuery: 민지랑 강남역에서 비 맞은 날 노래"
+    }
+  }
+}
+
+@VALIDATE {
+  RULE 키비노출 {
+    SEVERITY = CRITICAL
+    ASSERT NOT 저장소 CONTAINS GEMINI_API_KEY 값
+    ASSERT NOT 클라이언트번들 CONTAINS "GEMINI_API_KEY"
+    ON_FAIL → EMIT ERROR "API 키가 노출됐다. 커밋·배포를 멈춘다"
+  }
+  RULE 마감무중단 {
+    SEVERITY = CRITICAL
+    ASSERT 모든 모델 실패 시 summarize 응답 200 AND source == "fallback"
+    ON_FAIL → EMIT ERROR "Gemini 실패가 마감 실패로 이어진다"
+  }
+  RULE 대체순서 {
+    SEVERITY = CRITICAL
+    ASSERT 429 → 다음 모델, 5xx → 다음 모델, 45초 초과 → 다음 모델, 형식 오류 → 다음 모델, 400 → mock
+    ON_FAIL → EMIT ERROR "fallback.ts 분류 규칙이 @BRANCH와 다르다"
+  }
+  RULE 모델명env {
+    SEVERITY = WARNING
+    ASSERT NOT src CONTAINS "gemini-3" 리터럴 (주석·.env.example 제외)
+    ON_FAIL → EMIT WARNING "모델 이름이 코드에 고정돼 있다"
+  }
+  RULE 검색어검사 {
+    SEVERITY = CRITICAL
+    ASSERT songQuery LENGTH IN RANGE(1,40) AND NOT songQuery CONTAINS 숫자 AND NOT songQuery CONTAINS "@" AND NOT songQuery CONTAINS "http"
+    ON_FAIL → EMIT WARNING "검색어가 규칙을 어겨 고정 단어 검색어로 대체한다"
+  }
+  RULE 비공개유지 {
+    SEVERITY = CRITICAL
+    ASSERT NOT 공개전시응답 CONTAINS "song_query" AND NOT 공개전시응답 CONTAINS "mood"
+    ASSERT NOT song_pool HAS_ANY [user_id, song_query, summary]
+    ON_FAIL → EMIT ERROR "개인 데이터가 공개 경로로 샌다"
+  }
+  RULE 기존시험 {
+    SEVERITY = CRITICAL
+    ASSERT npm test 통과 AND songs e2e 통과 AND security-smoke 통과 AND npm run build 성공
+    ON_FAIL → EMIT ERROR "기존 기능이 깨졌다"
+  }
+  RULE 개발한도보호 {
+    SEVERITY = WARNING
+    ASSERT .env.example 의 AI_TEXT_PROVIDER == "mock"
+    ON_FAIL → EMIT WARNING "로컬 기본값이 gemini라 개발 중 무료 한도를 쓴다"
+  }
+}

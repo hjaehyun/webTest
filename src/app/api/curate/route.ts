@@ -3,6 +3,9 @@
 // Signed-in users only, size-capped, and counted against the daily AI quota (H1).
 
 import { NextResponse } from "next/server";
+
+// A slow first model can take up to 45s before the fallback model answers (src/server/ai/gemini.ts).
+export const maxDuration = 60;
 import type { CurationInput } from "@/lib/types";
 import { textAI } from "@/server/ai";
 import { requireUser } from "@/server/auth";

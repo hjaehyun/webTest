@@ -102,7 +102,10 @@ alter table public.daily_artworks
   add column if not exists mood        text check (mood in ('calm', 'upbeat', 'flutter', 'proud', 'lazy', 'tired', 'blue', 'nostalgic', 'busy', 'cozy')),
   add column if not exists weather     text check (weather in ('clear', 'cloudy', 'rain', 'snow', 'hot', 'unknown')),
   add column if not exists time_of_day text check (time_of_day in ('morning', 'day', 'night')),
-  add column if not exists song_id     bigint references public.song_pool (id) on delete set null;
+  add column if not exists song_id     bigint references public.song_pool (id) on delete set null,
+  -- YouTube search words the text AI wrote for this day (genre/mood only, specs/haru-gemini-text-ai.spl).
+  -- Private like the rest of the row: only the song route reads it; never in song_pool or public exhibitions.
+  add column if not exists song_query  text check (char_length(song_query) between 1 and 40);
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
@@ -113,7 +116,7 @@ revoke select on public.ai_usage from anon;
 -- Creating is limited to the columns the app sends; image_url/status/created_at stay server-side.
 -- Redrawing goes through redraw_artwork() below. Account deletion uses the secret key and is unaffected.
 revoke insert, update, delete on public.daily_artworks from anon, authenticated;
-grant insert (user_id, day, style, scene, summary, tags, mood) on public.daily_artworks to authenticated;
+grant insert (user_id, day, style, scene, summary, tags, mood, song_query) on public.daily_artworks to authenticated;
 -- Fragments: editing may only change the text. id, day, written_at and user_id stay as written,
 -- so an edit can't move a fragment to another day (e.g. into a closed one) or change its time.
 revoke update on public.entries from anon, authenticated;
@@ -267,9 +270,9 @@ begin
 
   delete from public.daily_artworks where id = old_id;
   -- The song and its match key stay with the day (a redraw keeps the picture's song).
-  insert into public.daily_artworks (user_id, day, style, scene, summary, tags, mood, weather, time_of_day, song_id)
+  insert into public.daily_artworks (user_id, day, style, scene, summary, tags, mood, weather, time_of_day, song_id, song_query)
     values (uid, p_day, p_style, p_scene, p_summary, coalesce(p_tags, '{}'),
-            old.mood, old.weather, old.time_of_day, old.song_id)
+            old.mood, old.weather, old.time_of_day, old.song_id, old.song_query)
     returning id into new_id;
 
   insert into public.exhibition_items (exhibition_id, artwork_id, position, note)

@@ -1,4 +1,4 @@
-// POST /api/me/artworks  { date, scene, style, summary, tags, mood? } -> 201
+// POST /api/me/artworks  { date, scene, style, summary, tags, mood?, songQuery? } -> 201
 // Closes the day: that day's entries become this picture's entries.
 
 import { NextResponse } from "next/server";
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   try {
     const me = await requireUser();
     if (!me) return unauthorized();
-    await saveArtwork(me.sb, me.user.id, { date: a.date, scene: a.scene, style: a.style, summary: a.summary, tags: a.tags, mood: a.mood });
+    await saveArtwork(me.sb, me.user.id, { date: a.date, scene: a.scene, style: a.style, summary: a.summary, tags: a.tags, mood: a.mood, songQuery: a.songQuery });
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {
     return fail(err, DB_FAILED);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MOODS, isMood, isTimeOfDay, isWeather, songQuery, timeOfDay } from "./key.ts";
+import { MOODS, isMood, isSafeSongQuery, isTimeOfDay, isWeather, songQuery, timeOfDay } from "./key.ts";
 
 test("timeOfDay: KST boundaries", () => {
   assert.equal(timeOfDay(["2026-11-06T19:59:00.000Z"]), "night"); // 04:59 KST
@@ -28,4 +28,17 @@ test("guards", () => {
   assert.ok(isMood("cozy") && !isMood("happy"));
   assert.ok(isWeather("unknown") && !isWeather("sunny"));
   assert.ok(isTimeOfDay("night") && !isTimeOfDay("evening"));
+});
+
+test("isSafeSongQuery: genre/mood words only", () => {
+  assert.ok(isSafeSongQuery("비 오는 밤 잔잔한 어쿠스틱"));
+  assert.ok(isSafeSongQuery("rainy night acoustic"));
+  assert.ok(!isSafeSongQuery(""));
+  assert.ok(!isSafeSongQuery("   "));
+  assert.ok(!isSafeSongQuery("가".repeat(41)));
+  assert.ok(!isSafeSongQuery("010 1234 노래")); // digits (phone, student id)
+  assert.ok(!isSafeSongQuery("me@mail.com 노래"));
+  assert.ok(!isSafeSongQuery("http://x.y 노래"));
+  assert.ok(!isSafeSongQuery("www.site 노래"));
+  assert.ok(!isSafeSongQuery(42));
 });

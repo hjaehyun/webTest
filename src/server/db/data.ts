@@ -134,10 +134,11 @@ export async function updateEntry(sb: SupabaseClient, userId: string, id: string
 export async function saveArtwork(
   sb: SupabaseClient,
   userId: string,
-  a: { date: string; scene: Scene; style: StyleId; summary: string; tags: string[]; mood?: Mood },
+  a: { date: string; scene: Scene; style: StyleId; summary: string; tags: string[]; mood?: Mood; songQuery?: string },
 ): Promise<void> {
   const { error } = await sb.from("daily_artworks").insert({
     mood: a.mood ?? null,
+    song_query: a.songQuery?.trim() || null, // private: only the song route reads it
     user_id: userId,
     day: a.date,
     style: a.style,

@@ -1,0 +1,132 @@
+// Google Gemini text provider (free tier), specs/haru-gemini-text-ai.spl.
+//
+// Each feature has its own model list so their free-tier limits add up (limits are per model):
+//   GEMINI_MODELS_SUMMARIZE  e.g. "<flash>,<flash-lite>"   scene summary + mood + songQuery
+//   GEMINI_MODELS_CURATE     e.g. "<flash>,<flash-lite>"   curator commentary
+// Model names live only in env (.env.example has the defaults). After the last model, mock answers,
+// so a limit or outage never fails closing a day. Key: GEMINI_API_KEY (server only).
+// REST Interactions API through fetch; store:false keeps the conversation off Google's servers.
+// Free tier: Google may use inputs to improve its products, so the app tells users (sign-up, guide).
+
+import type { CurationInput, CurationText, DaySummary, Entry } from "@/lib/types";
+import { MOODS } from "../music/key";
+import { SCENES } from "../validate";
+import { checkCuration, checkSummary } from "./check";
+import { ModelHttpError, runWithFallback } from "./fallback";
+import { mockText } from "./mock";
+import type { TextProvider } from "./types";
+
+const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
+const API_REVISION = "2026-05-20";
+// Free-tier Flash measured up to ~40s (2026-11-08); 45s per model, then the next one. Retune after
+// watching real close-to-picture times (SPL rev 2). Routes allow 60s (maxDuration) for this.
+export const TIMEOUT_MS = 45_000;
+
+const models = (envName: string): string[] =>
+  (process.env[envName] ?? "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+
+const SUMMARY_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    tags: { type: "array", items: { type: "string" }, maxItems: 10 },
+    scene: { type: "string", enum: SCENES },
+    mood: { type: "string", enum: MOODS },
+    songQuery: { type: "string" },
+  },
+  required: ["summary", "tags", "scene", "mood", "songQuery"],
+};
+
+const CURATION_SCHEMA = {
+  type: "object",
+  properties: { headline: { type: "string" }, body: { type: "string" } },
+  required: ["headline", "body"],
+};
+
+const SUMMARY_SYSTEM = [
+  "너는 그림일기 앱 '하루조각'의 장면 정리 담당이다. 사용자가 하루 동안 남긴 짧은 조각글을 받아 그림 한 장으로 그릴 장면을 정리한다.",
+  "- summary: 그림으로 그릴 수 있는 한 문단(300자 이내). 서로 다른 순간은 시간 순서대로 한 그림 안에 조화롭게 담는다. 그림체 이야기는 쓰지 않는다.",
+  "- tags: 자주 나온 대상이나 순간을 짧은 명사로 1~5개(각 10자 이내).",
+  "- scene: 목록에서 가장 가까운 배경 하나.",
+  "- mood: 목록에서 그날 전체 분위기에 가장 가까운 하나.",
+  "- songQuery: 그날에 어울리는 노래를 YouTube에서 찾을 검색어(25자 이내). 장르·분위기·날씨·시간대·상황 단어만 쓴다. 사람 이름, 장소, 학교, 회사, 숫자, 조각글 문장을 넣지 않는다. 예: '비 오는 밤 잔잔한 어쿠스틱'.",
+  "조각글에 없는 사실을 지어내지 않는다.",
+].join("\n");
+
+const CURATION_SYSTEM = [
+  "너는 그림일기 앱 '하루조각'의 큐레이터다. 한 기간 동안 모인 그림들의 장면 요약과 자주 나온 태그를 받아 전시 해설을 쓴다.",
+  "- headline: 그 기간을 한 줄로 부르는 제목(40자 이내).",
+  "- body: 2~4문장(400자 이내). 따뜻한 해요체. 주어진 요약과 태그에 있는 내용만 쓴다.",
+].join("\n");
+
+/** One Interactions API call; returns the parsed JSON the model wrote. */
+async function interact(model: string, system: string, input: string, schema: object, signal: AbortSignal): Promise<unknown> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new ModelHttpError(401, "GEMINI_API_KEY is not set");
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key, "Api-Revision": API_REVISION },
+    body: JSON.stringify({
+      model,
+      input,
+      system_instruction: system,
+      response_format: { type: "text", mime_type: "application/json", schema },
+      generation_config: { max_output_tokens: 1024 },
+      store: false,
+    }),
+    signal,
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => null)) as {
+    error?: { message?: string };
+    steps?: { type?: string; content?: { type?: string; text?: string }[] }[];
+  } | null;
+  if (!res.ok) throw new ModelHttpError(res.status, (json?.error?.message ?? "request failed").slice(0, 200));
+  const out = (json?.steps ?? []).filter((s) => s.type === "model_output").at(-1);
+  const text = (out?.content ?? [])
+    .filter((c) => c.type === "text")
+    .map((c) => c.text ?? "")
+    .join("");
+  if (!text) throw new Error("no text in the answer");
+  return JSON.parse(text); // a parse error counts as an unusable answer -> next model
+}
+
+/** "오전 9:12 조각" lines in Asia/Seoul time, oldest first. */
+function entryLines(entries: Entry[]): string {
+  const fmt = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "numeric", minute: "2-digit" });
+  return [...entries]
+    .sort((a, b) => (a.at < b.at ? -1 : 1))
+    .map((e) => `${fmt.format(new Date(e.at))} ${e.text}`)
+    .join("\n");
+}
+
+export const geminiText: TextProvider = {
+  name: "gemini",
+
+  async summarizeDay(entries: Entry[]): Promise<DaySummary> {
+    const r = await runWithFallback<DaySummary>({
+      models: models("GEMINI_MODELS_SUMMARIZE"),
+      call: (model, signal) => interact(model, SUMMARY_SYSTEM, `오늘의 조각글:\n${entryLines(entries)}`, SUMMARY_SCHEMA, signal),
+      check: checkSummary,
+      fallback: () => mockText.summarizeDay(entries),
+      timeoutMs: TIMEOUT_MS,
+    });
+    if (r.model) console.info(`[ai] summarize answered by ${r.model}`);
+    return { ...r.value, source: r.source };
+  },
+
+  async writeCuration(input: CurationInput): Promise<CurationText> {
+    const r = await runWithFallback<CurationText>({
+      models: models("GEMINI_MODELS_CURATE"),
+      call: (model, signal) => interact(model, CURATION_SYSTEM, JSON.stringify(input), CURATION_SCHEMA, signal),
+      check: checkCuration,
+      fallback: () => mockText.writeCuration(input),
+      timeoutMs: TIMEOUT_MS,
+    });
+    if (r.model) console.info(`[ai] curate answered by ${r.model}`);
+    return r.value;
+  },
+};

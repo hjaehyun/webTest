@@ -41,7 +41,8 @@ export function parseSearchResponse(json: unknown): SongHit[] {
     if (typeof videoId !== "string" || !VIDEO_ID.test(videoId) || !snippet) continue;
     if (typeof snippet.title !== "string" || typeof snippet.channelTitle !== "string") continue;
     const title = decodeEntities(snippet.title).trim();
-    if (!title || NOT_A_SONG.test(title)) continue;
+    // NFKC folds styled letters (𝐏𝐋𝐀𝐘𝐋𝐈𝐒𝐓, ｍｉｘ) to plain ones for the filter; the title is stored as uploaded.
+    if (!title || NOT_A_SONG.test(title.normalize("NFKC"))) continue;
     hits.push({
       videoId,
       title: [...title].slice(0, TITLE_MAX).join(""),

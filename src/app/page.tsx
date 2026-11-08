@@ -95,6 +95,12 @@ export default function LoginPage() {
               {message}
             </p>
           )}
+          {signup && (
+            <p className={s.notice}>
+              조각글은 장면 정리를 위해 Google Gemini로 전송돼요. 무료 등급에서는 Google 서비스 개선에 쓰일 수 있으니, 이름이나 연락처는
+              적지 말아 주세요.
+            </p>
+          )}
           <button className="btn" type="submit" style={{ marginTop: 8 }} disabled={busy}>
             {busy ? "잠시만요…" : signup ? "가입하기" : "로그인"}
           </button>

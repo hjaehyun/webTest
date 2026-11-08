@@ -49,3 +49,9 @@ test("hostile entities: single decode pass, no throw, no NUL/surrogates", () => 
   assert.equal(one("x&#x41;y"), "xAy");
   assert.equal(one("tab\tand\u0007bell"), "tabandbell");
 });
+
+test("styled unicode (𝐏𝐋𝐀𝐘𝐋𝐈𝐒𝐓, ｍｉｘ) can't slip past the compilation filter", () => {
+  assert.equal(parseSearchResponse({ items: [item("abcdefghijk", "𝐏𝐋𝐀𝐘𝐋𝐈𝐒𝐓 | 그냥 요즘 생각이 많아져서")] }).length, 0);
+  assert.equal(parseSearchResponse({ items: [item("abcdefghijk", "새벽 ｍｉｘ")] }).length, 0);
+  assert.equal(parseSearchResponse({ items: [item("abcdefghijk", "𝐒𝐨𝐧𝐠 title")] })[0]?.title, "𝐒𝐨𝐧𝐠 title"); // shown as uploaded
+});

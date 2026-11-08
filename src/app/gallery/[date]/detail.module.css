@@ -5,6 +5,7 @@
 .badge { padding: 2px 8px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 500; }
 .h { margin: 0 0 6px; }
 .summary { margin: 0; font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+.fallback { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 .tags { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--accent-ink); }
 .entries { display: flex; flex-direction: column; gap: 10px; }
 .entries h2 { margin: 0; font-size: 15px; font-weight: 700; }

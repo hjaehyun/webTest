@@ -30,7 +30,7 @@ function Guide() {
   const slides = [
     {
       title: "생각날 때 한 줄씩",
-      body: "잘 쓸 필요 없어요. 지금 본 것, 먹은 것, 기분 한 단어면 충분해요. 막히면 질문 버튼을 눌러보세요.",
+      body: "잘 쓸 필요 없어요. 지금 본 것, 먹은 것, 기분 한 단어면 충분해요. 조각글은 장면 정리를 위해 Google Gemini로 전송되니 이름이나 연락처는 적지 마세요.",
       art: (
         <div className={s.chat}>
           <span className={s.time}>오전 9:12</span>
