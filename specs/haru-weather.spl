@@ -1,0 +1,247 @@
+@SCHEMA = "SPL-SYNTAX-v1.2"
+
+@META {
+  type = "개발지시"
+  version = "1.0"
+  reader = "코딩 에이전트 (Claude Code)"
+  success = "조각글을 올릴 때 위치를 허용하면 그 시각의 기상청 날씨(하늘·강수·기온)가 조각글에 저장되고, 마감할 때 Gemini가 조각글별 시각·날씨를 받아 장면 요약·그림 프롬프트·노래 검색어에 자연스럽게 반영한다. 위치를 거부하거나 날씨를 못 받아도 조각글은 그대로 저장된다"
+  failure = "날씨 때문에 조각글 저장이 실패하거나 눈에 띄게 느려지거나, 좌표가 DB·로그·외부 API(기상청 외)에 남거나, 기상청 키가 노출되거나, 기존 시험(npm test, security-smoke)이 깨진다"
+  constraint = "웹프로그래밍 수업 팀 프로젝트. 기상청 단기예보 조회서비스(공공데이터포털) 무료 키만 사용. 텍스트 AI 명세 haru-gemini-text-ai(최신 rev)의 장면 정리 흐름 위에 얹는다"
+}
+
+@INTENT {
+  CORE = "그날의 날씨가 그림일기에 담기게 한다. 사용자가 따로 적지 않아도"
+  MUST_PRESERVE [
+    "POST /api/me/entries 요청 형태(필드 추가만 허용)와 마감한 날 글 추가 금지 RLS"
+    "위치를 거부해도 모든 기능이 지금처럼 동작"
+    "WEATHER_PROVIDER=mock 일 때 외부 호출 없음"
+    "노래 추천 키의 weather는 unknown 그대로 (이번 범위 아님)"
+    "기존 시험 통과: npm test, scripts/security-smoke.sh 28항목"
+  ]
+  MUST_NOT [
+    "좌표(위도·경도)를 DB·로그·Gemini 입력에 남기기"
+    "소수점 2자리보다 정밀한 좌표를 서버로 보내기"
+    "기상청 키를 코드·저장소·브라우저 번들·로그에 남기기"
+    "날씨 조회 실패로 조각글 저장을 실패시키기"
+    "날씨 조회 때문에 조각글 저장을 3초 넘게 기다리게 하기"
+    "화면에 날씨를 표시하는 UI 추가 (이번 범위 아님)"
+    "새 npm 패키지 추가 (기상청 REST를 fetch로)"
+  ]
+}
+
+DECISION_SCOPE {
+  STRATEGY = USER
+  REQUIREMENTS = USER
+  STRUCTURE = BOTH
+  EXPRESSION = AI
+  VALIDATION = BOTH
+  FINAL_APPROVAL = USER
+}
+
+@ENV {
+  LANG = "TypeScript 5 (Node.js 24.14.1)"
+  FRAMEWORK = "Next.js 15.5.28 App Router + React 19.1"
+  RUNTIME = "Windows 11 개발 PC, 배포는 Vercel 서버리스 (Node.js), 브라우저 Geolocation API (HTTPS 필요)"
+  TOOLCHAIN = "npm, tsc, eslint, node --test (Node 24 타입 제거), @supabase/supabase-js 2.118, @supabase/ssr 0.12"
+  ROOT = "C:\Users\Jaehyeon\Desktop\26_2\웹프로그래밍\하루조각\haru-jogak"
+  REPO = "GitHub hjaehyun/webTest (로컬 하루조각은 git 아님, 클론에 복사해 커밋)"
+  BRANCH = "작업 후 main에 push"
+  BUILD = "npm run build"
+  RUN = "npm run dev (http://localhost:3000)"
+  DB supabase {
+    PROVIDER = "Supabase Postgres (RLS)"
+    LOCATION = "Supabase 프로젝트 (env SUPABASE_URL)"
+    SECRET_REF = "SUPABASE_SECRET_KEY"
+    CONFIG_REF = "haru-jogak/supabase/schema.sql, haru-jogak/supabase/migrations/ (SQL Editor에서 사람이 실행)"
+  }
+  INFRA {
+    날씨API = "기상청 단기예보 조회서비스 초단기예보 getUltraSrtFcst (apis.data.go.kr/1360000/VilageFcstInfoService_2.0)"
+    배포 = "Vercel 자동 배포 dayily-diary-seven.vercel.app"
+  }
+  CONSTRAINT [
+    "기상청 키는 env KMA_SERVICE_KEY 로만 읽는다 (서버 전용, 공공데이터포털 일반 인증키)"
+    "날씨 제공자는 env WEATHER_PROVIDER=mock|kma, 기본 mock"
+    "기상청은 격자 좌표(nx, ny)를 쓴다: 위경도 → 격자 변환(LCC, 기상청 공식 변환식)"
+    "초단기예보는 매시 30분 발표, 45분쯤부터 조회 가능: 발표 시각은 KST 기준으로 계산"
+    "schema.sql 변경은 재실행해도 안전해야 하고, 변경분은 supabase/migrations/ 에도 둔다"
+  ]
+  FORBIDDEN_ENV [
+    ".env.local 내용 출력·커밋"
+    "Supabase SQL을 에이전트가 직접 실행 (사람이 SQL Editor에서 실행)"
+    "force push"
+  ]
+}
+
+@INPUT {
+  REQUIRED {
+    entry: TEXT[1..140]
+    written_at: DATE
+  }
+  OPTIONAL {
+    lat: NUMBER
+    lon: NUMBER
+  }
+}
+
+@BRANCH {
+  IF 브라우저 위치 허용 AND 좌표 획득 { SET coords = "소수점 2자리로 반올림해 조각글과 함께 전송" }
+  ELIF 위치 거부 OR 위치 실패 OR 위치 3초 초과 { SET coords = null }
+  ELSE { SET coords = null }
+
+  IF coords != null AND 대한민국 범위(위도 33~39, 경도 124~132) AND WEATHER_PROVIDER == "kma" AND KMA_SERVICE_KEY EXISTS { SET weather = "기상청 초단기예보 조회 (3초 제한)" }
+  ELIF coords != null AND WEATHER_PROVIDER == "mock" { SET weather = "mock 날씨" }
+  ELSE { SET weather = null }
+
+  IF 기상청 오류 OR 3초 초과 OR 응답 형식 오류 { SET weather = null  EMIT WARNING "날씨 없이 저장" }
+
+  FALLBACK { ASK "날씨 응답을 분류할 수 없다. 어떻게 처리할까?" OPTIONS["날씨 없이 저장", "작업 중단"] }
+}
+
+@PIPELINE {
+  PHASE 기준확인 {
+    DESCRIPTION = "이 SPL 최신 리비전을 읽고, 기상청 초단기예보 API의 요청 파라미터·응답 형식(SKY, PTY, T1H 등 카테고리)과 격자 변환식을 공식 문서로 확인한다"
+    TRACE = SUMMARY
+    OUTPUT → 기준rev
+    GATE = AUTO
+  }
+  PHASE 순수로직 {
+    DESCRIPTION = "src/server/weather/: 위경도 → 격자 변환, 발표 시각 계산(KST), 응답 → 날씨 값 변환(하늘·강수 → 고정 목록, 기온 정수), 좌표 범위·반올림 검사를 순수 함수로 두고 테스트한다 (예: 서울 시청 → nx 60, ny 127)"
+    DEPENDS_ON = 기준확인
+    TRACE = SUMMARY
+    RUN npm test
+    OUTPUT → weather순수로직
+    GATE = AUTO
+  }
+  PHASE 제공자 {
+    DESCRIPTION = "WeatherProvider(mock | kma): kma는 기상청 REST를 fetch로 3초 제한, 실패는 null. 키 없으면 mock. .env.example 2개 변수"
+    DEPENDS_ON = 순수로직
+    TRACE = SUMMARY
+    OUTPUT → 제공자
+    GATE = AUTO
+  }
+  PHASE 저장 {
+    DESCRIPTION = "schema.sql·마이그레이션: entries.weather(고정 목록 check), entries.temp_c(-50~60 check) 컬럼. POST /api/me/entries가 선택 필드 lat·lon(소수점 2자리, 범위 검사)을 받아 날씨를 조회하고 함께 insert. 좌표는 저장·로그하지 않음. GET /api/me 조각글에 weather·tempC 포함"
+    DEPENDS_ON = 제공자
+    TRACE = SUMMARY
+    OUTPUT → 저장경로
+    GATE = AUTO
+  }
+  PHASE 스키마실행 {
+    DESCRIPTION = "마이그레이션 SQL을 재현님께 드리고 SQL Editor 실행을 요청한 뒤, 확인 스크립트로 컬럼과 check 제약을 실제 DB에서 시험한다"
+    DEPENDS_ON = 저장
+    TRACE = SUMMARY
+    OUTPUT → 스키마확인
+    GATE = CONFIRM
+  }
+  PHASE 화면과장면 {
+    DESCRIPTION = "오늘 화면: 조각 올리기 때 navigator.geolocation(3초 제한, 캐시 허용)으로 좌표를 얻어 반올림해 함께 전송, 거부·실패는 조용히 생략. 장면 정리: Gemini 입력의 조각글 줄에 날씨를 붙임(예: '오후 4:05 (비, 12℃) 아 배고프다'), 프롬프트에 날씨를 장면·imagePrompt·songQuery에 자연스럽게 반영하라는 규칙 추가. 가입·가이드 안내에 위치 문구"
+    DEPENDS_ON = 스키마실행
+    TRACE = SUMMARY
+    OUTPUT → 화면
+    GATE = AUTO
+  }
+  PHASE 시험 {
+    DESCRIPTION = "npm test, tsc, lint, build, security-smoke, 조각글 e2e(mock: 좌표 있음·없음·범위 밖·정밀 좌표 거부, 좌표 미저장 확인). 그다음 재현님이 키를 넣으면 실제 기상청 1회 호출로 날씨 값 확인"
+    DEPENDS_ON = 화면과장면
+    TRACE = FULL
+    RUN npm test
+    REVIEW 실제 기상청 1회 호출 결과
+    OUTPUT → 시험결과
+    GATE = CONFIRM
+  }
+  PHASE 반영 {
+    DESCRIPTION = "클론 pull → 변경 복사(.env.local 제외) → 커밋(Co-Authored-By 줄) → main에 push → 배포 smoke. Vercel 환경변수(WEATHER_PROVIDER=kma, KMA_SERVICE_KEY)는 재현님이 설정"
+    DEPENDS_ON = 시험
+    TRACE = SUMMARY
+    OUTPUT → 배포
+    GATE = CONFIRM
+  }
+  PHASE 보고 {
+    DESCRIPTION = "기준 rev, 실행 명령, 실제 시험 결과를 report/YYYY-MM-DD_작업보고서.md와 대화로 보고하고 CLAUDE.md를 갱신한다"
+    DEPENDS_ON = 반영
+    TRACE = SUMMARY
+    OUTPUT → 작업보고서
+    GATE = AUTO
+  }
+}
+
+@TEMPLATE {
+  UNIT entry_weather {
+    STRUCT {
+      weather: ENUM[clear, cloudy, overcast, rain, rain_snow, snow, shower]
+      tempC: NUMBER
+    }
+    RULE = "기상청 SKY(1 맑음, 3 구름많음, 4 흐림)와 PTY(1 비, 2 비/눈, 3 눈, 4 소나기, 5 빗방울, 6 빗방울눈날림, 7 눈날림)를 하나로: 강수가 있으면 강수 값, 없으면 하늘 값. tempC는 T1H 반올림 정수"
+  }
+  UNIT entry_request_ext {
+    STRUCT {
+      lat: NUMBER
+      lon: NUMBER
+    }
+    RULE = "둘 다 있거나 둘 다 없음. 소수점 2자리 이하, 대한민국 범위 밖이면 날씨 없이 저장"
+  }
+  UNIT gemini_entry_line {
+    STRUCT {
+      time: TEXT
+      weather_word: TEXT
+      text: TEXT[1..140]
+    }
+    RULE = "'오후 4:05 (비, 12℃) 아 배고프다'. 날씨가 없으면 괄호 없이"
+  }
+  MAP {
+    [POST /api/me/entries] → entry_request_ext
+    [entries 행] → entry_weather
+    [Gemini 장면 정리 입력] → gemini_entry_line
+  }
+}
+
+@STYLE {
+  SCOPE[*] {
+    "화면 문구는 하루조각 기존 말투: 짧은 해요체"
+    DENY [ "위치 권한 거부 시 오류 알림 띄우기" ]
+  }
+  SCOPE[프롬프트] {
+    "날씨는 장면의 배경으로 자연스럽게: 비 오는 오후면 창밖의 비, 맑은 아침이면 햇살"
+    DENY [ "기온 숫자를 그림 안에 쓰게 하기", "날씨를 지어내기 (날씨가 없는 조각글은 날씨를 말하지 않음)" ]
+  }
+}
+
+@VALIDATE {
+  RULE 좌표미저장 {
+    SEVERITY = CRITICAL
+    ASSERT NOT entries HAS_ANY [lat, lon, latitude, longitude]
+    ASSERT NOT 서버로그 CONTAINS 좌표 값
+    ASSERT NOT Gemini입력 CONTAINS 좌표 값
+    ON_FAIL → EMIT ERROR "위치 정보가 남는다"
+  }
+  RULE 저장무중단 {
+    SEVERITY = CRITICAL
+    ASSERT 기상청 오류·시간 초과·키 없음일 때 POST /api/me/entries 201 AND weather == null
+    ON_FAIL → EMIT ERROR "날씨 실패가 조각글 저장 실패로 이어진다"
+  }
+  RULE 좌표검사 {
+    SEVERITY = CRITICAL
+    ASSERT 소수점 2자리 초과 좌표는 400 AND lat·lon 중 하나만 오면 400 AND 범위 밖 좌표는 날씨 없이 201
+    ON_FAIL → EMIT ERROR "좌표 입력 검사가 명세와 다르다"
+  }
+  RULE 격자변환 {
+    SEVERITY = CRITICAL
+    ASSERT 서울 시청(37.57, 126.98) → nx 60, ny 127 (기상청 격자)
+    ON_FAIL → EMIT ERROR "격자 변환이 틀렸다"
+  }
+  RULE 키비노출 {
+    SEVERITY = CRITICAL
+    ASSERT NOT 저장소 CONTAINS KMA_SERVICE_KEY 값 AND NOT 클라이언트번들 CONTAINS "KMA_SERVICE_KEY"
+    ON_FAIL → EMIT ERROR "기상청 키가 노출됐다"
+  }
+  RULE 기존시험 {
+    SEVERITY = CRITICAL
+    ASSERT npm test 통과 AND security-smoke 통과 AND npm run build 성공
+    ON_FAIL → EMIT ERROR "기존 기능이 깨졌다"
+  }
+  RULE 개발한도보호 {
+    SEVERITY = WARNING
+    ASSERT .env.example 의 WEATHER_PROVIDER == "mock"
+    ON_FAIL → EMIT WARNING "로컬 기본값이 kma라 개발 중 호출 한도를 쓴다"
+  }
+}

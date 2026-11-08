@@ -24,7 +24,7 @@ export default function TodayPage() {
 type Stage = 0 | 1 | 2 | 3;
 
 function Today() {
-  const { db, addEntry, editEntry, removeEntry, saveArtwork } = useStore();
+  const { db, addEntry, editEntry, removeEntry, saveArtwork, flushEntries } = useStore();
   const date = todayKey();
   const art = db.artworks[date];
   const style = db.profile!.style;
@@ -89,6 +89,7 @@ function Today() {
     setOpenId(null);
     setStage(1);
     try {
+      await flushEntries(); // fragments still waiting for the location must reach the server before closing
       const summary = await summarizeDay(entries);
       setStage(2);
       const { scene, imagePath, imageUrl } = await drawScene(summary, style, date);

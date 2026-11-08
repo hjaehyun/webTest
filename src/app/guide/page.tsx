@@ -30,7 +30,7 @@ function Guide() {
   const slides = [
     {
       title: "생각날 때 한 줄씩",
-      body: "잘 쓸 필요 없어요. 지금 본 것, 먹은 것, 기분 한 단어면 충분해요. 조각글은 장면 정리(Google Gemini)와 그림 그리기(Cloudflare Workers AI)에 쓰이니 이름이나 연락처는 적지 마세요.",
+      body: "잘 쓸 필요 없어요. 지금 본 것, 먹은 것, 기분 한 단어면 충분해요. 조각글은 장면 정리(Google Gemini)와 그림 그리기(Cloudflare Workers AI)에 쓰이니 이름이나 연락처는 적지 마세요. 위치를 허용하면 그때 날씨가 그림에 담겨요(위치는 저장하지 않아요).",
       art: (
         <div className={s.chat}>
           <span className={s.time}>오전 9:12</span>

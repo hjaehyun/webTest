@@ -3,7 +3,7 @@
 // the user_id filters here only keep results tidy.
 
 import type { PostgrestError, SupabaseClient, User } from "@supabase/supabase-js";
-import type { Artwork, DB, Entry, Mood, Profile, Scene, StyleId } from "@/lib/types";
+import type { Artwork, DB, Entry, EntryWeather, Mood, Profile, Scene, StyleId, WeatherCode } from "@/lib/types";
 import { debugLog } from "../debug";
 import { HttpError } from "../http";
 import { removeImage, signImagePaths } from "./images";
@@ -30,7 +30,7 @@ function check(error: PostgrestError | null, known: Record<string, HttpError> = 
 export async function loadDb(sb: SupabaseClient, user: User): Promise<DB> {
   const [profileRes, entryRes, artRes, exRes] = await Promise.all([
     sb.from("profiles").select("nick, style").eq("user_id", user.id).maybeSingle(),
-    sb.from("entries").select("id, day, written_at, body").eq("user_id", user.id).order("written_at"),
+    sb.from("entries").select("id, day, written_at, body, weather, temp_c").eq("user_id", user.id).order("written_at"),
     sb
       .from("daily_artworks")
       .select("day, style, scene, summary, tags, mood, image_path, song_pool(id, video_id, title, channel)")
@@ -67,7 +67,7 @@ export async function loadDb(sb: SupabaseClient, user: User): Promise<DB> {
   // An entry belongs to its day's picture once that day is closed; otherwise it is a draft.
   const drafts: Record<string, Entry[]> = {};
   for (const r of entryRes.data ?? []) {
-    const entry: Entry = { id: r.id, at: new Date(r.written_at).toISOString(), text: r.body };
+    const entry: Entry = { id: r.id, at: new Date(r.written_at).toISOString(), text: r.body, weather: toWeather(r) };
     const art = artworks[r.day];
     if (art) art.entries.push(entry);
     else (drafts[r.day] ??= []).push(entry);
@@ -103,10 +103,32 @@ export async function saveProfile(sb: SupabaseClient, userId: string, p: Profile
   check(error);
 }
 
+const toWeather = (r: { weather?: unknown; temp_c?: unknown }): EntryWeather | null =>
+  typeof r.weather === "string" && typeof r.temp_c === "number" ? { weather: r.weather as WeatherCode, tempC: r.temp_c } : null;
+
+/** Weather saved with the user's own fragments (RLS), by fragment id. For the scene summary. */
+export async function entryWeathers(sb: SupabaseClient, userId: string, ids: string[]): Promise<Map<string, EntryWeather>> {
+  const out = new Map<string, EntryWeather>();
+  if (!ids.length) return out;
+  const { data, error } = await sb.from("entries").select("id, weather, temp_c").eq("user_id", userId).in("id", ids);
+  check(error);
+  for (const r of data ?? []) {
+    const w = toWeather(r);
+    if (w) out.set(r.id as string, w);
+  }
+  return out;
+}
+
 export async function addEntry(sb: SupabaseClient, userId: string, day: string, e: Entry): Promise<void> {
-  const { error } = await sb
-    .from("entries")
-    .insert({ id: e.id, user_id: userId, day, written_at: e.at, body: e.text });
+  const { error } = await sb.from("entries").insert({
+    id: e.id,
+    user_id: userId,
+    day,
+    written_at: e.at,
+    body: e.text,
+    weather: e.weather?.weather ?? null,
+    temp_c: e.weather?.tempC ?? null,
+  });
   check(error, {
     // The insert policy refuses entries for a day that already has its picture.
     [RLS_VIOLATION]: new HttpError(409, "이미 마감한 날이에요"),

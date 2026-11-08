@@ -5,6 +5,7 @@
 // if a save fails, the user is told and the diary is reloaded from the server.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { afterPending, getCoarseCoords } from "./geo";
 import { shareInflight } from "./inflight";
 import type { Artwork, DB, Entry, Profile, Scene, Song, StyleId } from "./types";
 
@@ -34,6 +35,8 @@ type Store = {
   deleteAccount: (password: string) => Promise<void>;
   setProfile: (p: Profile) => void;
   addEntry: (date: string, text: string) => Entry;
+  /** Resolves once every fragment still being saved (waiting for the location) has reached the server. */
+  flushEntries: () => Promise<void>;
   /** Changes a draft's text in place; its time and order stay the same. */
   editEntry: (date: string, id: string, text: string) => void;
   removeEntry: (date: string, id: string) => void;
@@ -112,6 +115,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [refresh],
   );
 
+  // Fragment saves still waiting for the location (up to ~3s), by id: edits, deletes and closing wait for them.
+  const pendingEntries = useRef(new Map<string, Promise<unknown>>());
+
   // One song request per day at a time (the auto request after closing vs. a quick tap on the detail page).
   const songRequests = useRef(new Map<string, Promise<{ song: Song | null; unchanged: boolean }>>());
 
@@ -167,8 +173,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addEntry: (date, text) => {
         const entry: Entry = { id: crypto.randomUUID(), at: new Date().toISOString(), text };
         update((d) => ({ ...d, drafts: { ...d.drafts, [date]: [...(d.drafts[date] ?? []), entry] } }));
-        save(api("POST", "/api/me/entries", { date, entry }));
+        // Weather needs a rough location; refused or slow (3s) -> saved without weather (specs/haru-weather.spl).
+        const saving = getCoarseCoords()
+          .then((c) => api("POST", "/api/me/entries", { date, entry, ...(c ?? {}) }))
+          .finally(() => pendingEntries.current.delete(entry.id));
+        pendingEntries.current.set(entry.id, saving);
+        save(saving);
         return entry;
+      },
+      flushEntries: async () => {
+        await Promise.allSettled([...pendingEntries.current.values()]);
       },
       editEntry: (date, id, text) => {
         update((d) => ({
@@ -176,11 +190,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           drafts: { ...d.drafts, [date]: (d.drafts[date] ?? []).map((e) => (e.id === id ? { ...e, text } : e)) },
         }));
         if (process.env.NODE_ENV !== "production") console.debug("[entries] edit", { date, id });
-        save(api("PATCH", `/api/me/entries/${encodeURIComponent(id)}`, { text }));
+        save(afterPending(pendingEntries.current, id, () => api("PATCH", `/api/me/entries/${encodeURIComponent(id)}`, { text })));
       },
       removeEntry: (date, id) => {
         update((d) => ({ ...d, drafts: { ...d.drafts, [date]: (d.drafts[date] ?? []).filter((e) => e.id !== id) } }));
-        save(api("DELETE", `/api/me/entries/${encodeURIComponent(id)}`));
+        save(afterPending(pendingEntries.current, id, () => api("DELETE", `/api/me/entries/${encodeURIComponent(id)}`)));
       },
       saveArtwork: (a) => {
         update((d) => {

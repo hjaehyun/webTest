@@ -9,6 +9,7 @@ export const maxDuration = 90;
 import type { Entry } from "@/lib/types";
 import { textAI } from "@/server/ai";
 import { requireUser } from "@/server/auth";
+import { entryWeathers } from "@/server/db/data";
 import { consumeAiQuota } from "@/server/db/quota";
 import { bad, fail, isObj, readJson, unauthorized } from "@/server/http";
 import { AI_LIMITS, isText } from "@/server/validate";
@@ -32,7 +33,10 @@ export async function POST(req: Request) {
     const me = await requireUser();
     if (!me) return unauthorized();
     await consumeAiQuota(me.sb, me.user.id, "summarize");
-    return NextResponse.json(await textAI().summarizeDay(entries));
+    // Weather comes from the saved fragments (own rows, RLS), not from the client (specs/haru-weather.spl).
+    const weathers = await entryWeathers(me.sb, me.user.id, entries.map((e) => e.id));
+    const withWeather = entries.map((e) => ({ id: e.id, at: e.at, text: e.text, weather: weathers.get(e.id) ?? null }));
+    return NextResponse.json(await textAI().summarizeDay(withWeather));
   } catch (err) {
     return fail(err);
   }

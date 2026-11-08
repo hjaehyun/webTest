@@ -13,6 +13,7 @@ import { MOODS } from "../music/key";
 import { SCENES } from "../validate";
 import { checkCuration, checkSummary } from "./check";
 import { ModelHttpError, runWithFallback } from "./fallback";
+import { entryLines } from "./lines";
 import { mockText } from "./mock";
 import type { TextProvider } from "./types";
 
@@ -55,6 +56,7 @@ const SUMMARY_SYSTEM = [
   "- mood: 목록에서 그날 전체 분위기에 가장 가까운 하나.",
   "- songQuery: 그날에 어울리는 노래를 YouTube에서 찾을 검색어(25자 이내). 장르·분위기·날씨·시간대·상황 단어만 쓴다. 사람 이름, 장소, 학교, 회사, 숫자, 조각글 문장을 넣지 않는다. 예: '비 오는 밤 잔잔한 어쿠스틱'.",
   "- imagePrompt: 그림 AI에 보낼 영어 프롬프트 한 문단(400자 이내). 한 장의 그림으로 그릴 대상·배경·빛·분위기 순서로 쓴다. 시간 순 요소는 한 화면에 자연스럽게 배치하고, 서로 어울리지 않는 날씨(햇살과 비 등)는 같은 하늘에 섞지 말고 창 안팎이나 왼쪽·오른쪽처럼 나눠 둔다. 사람은 작게 또는 뒷모습으로. 사람 이름, 실제 장소명, 숫자, 그림 속 글자는 넣지 않는다. 그림체(수채화 등)는 쓰지 않는다.",
+  "- 조각글 앞 괄호의 날씨(예: '(비, 12℃)')는 그 시각의 실제 날씨다. 장면 배경으로 자연스럽게 살리고(비 오는 오후면 창밖의 비, 맑은 아침이면 햇살), imagePrompt와 songQuery에도 반영한다. 기온 숫자는 그림 안에 쓰지 않는다. 괄호가 없는 시각의 날씨는 지어내지 않는다.",
   "조각글에 없는 사실을 지어내지 않는다.",
 ].join("\n");
 
@@ -96,15 +98,6 @@ async function interact(model: string, system: string, input: string, schema: ob
     .join("");
   if (!text) throw new Error("no text in the answer");
   return JSON.parse(text); // a parse error counts as an unusable answer -> next model
-}
-
-/** "오전 9:12 조각" lines in Asia/Seoul time, oldest first. */
-function entryLines(entries: Entry[]): string {
-  const fmt = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "numeric", minute: "2-digit" });
-  return [...entries]
-    .sort((a, b) => (a.at < b.at ? -1 : 1))
-    .map((e) => `${fmt.format(new Date(e.at))} ${e.text}`)
-    .join("\n");
 }
 
 export const geminiText: TextProvider = {

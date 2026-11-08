@@ -21,7 +21,12 @@ export type Entry = {
   id: string;
   at: string; // ISO timestamp
   text: string;
+  weather?: EntryWeather | null; // KMA weather when the fragment was written (location allowed); never coordinates
 };
+
+/** Weather words for a fragment (specs/haru-weather.spl). */
+export type WeatherCode = "clear" | "cloudy" | "overcast" | "rain" | "rain_snow" | "snow" | "shower";
+export type EntryWeather = { weather: WeatherCode; tempC: number };
 
 export type Artwork = {
   date: string; // YYYY-MM-DD

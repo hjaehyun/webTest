@@ -98,7 +98,8 @@ export default function LoginPage() {
           {signup && (
             <p className={s.notice}>
               조각글은 장면 정리를 위해 Google Gemini로, 그림 설명은 그림을 그리기 위해 Cloudflare Workers AI로 전송돼요. 무료
-              등급에서는 서비스 개선에 쓰일 수 있으니, 이름이나 연락처는 적지 말아 주세요.
+              등급에서는 서비스 개선에 쓰일 수 있으니, 이름이나 연락처는 적지 말아 주세요. 위치를 허용하면 그날 날씨 확인에만
+              쓰고 저장하지 않아요.
             </p>
           )}
           <button className="btn" type="submit" style={{ marginTop: 8 }} disabled={busy}>

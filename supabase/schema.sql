@@ -24,6 +24,11 @@ create table if not exists public.entries (
   body       text not null check (char_length(body) between 1 and 140)
 );
 create index if not exists entries_user_day on public.entries (user_id, day);
+-- Weather when the fragment was written, if the user allowed location (specs/haru-weather.spl).
+-- Only the weather word and temperature are kept; coordinates are never stored.
+alter table public.entries
+  add column if not exists weather text check (weather in ('clear', 'cloudy', 'overcast', 'rain', 'rain_snow', 'snow', 'shower')),
+  add column if not exists temp_c  smallint check (temp_c between -50 and 60);
 
 -- One picture per user per day.
 create table if not exists public.daily_artworks (
