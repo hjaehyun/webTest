@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
@@ -139,6 +140,10 @@ export default function LoginPage() {
               {signup ? "로그인" : "회원가입"}
             </button>
           </div>
+          <p className={s.legal}>
+            시작하면 <Link href="/terms">서비스 약관</Link>과 <Link href="/privacy">개인정보처리방침</Link>에 동의하는 것으로
+            봐요
+          </p>
         </form>
       </div>
     </div>

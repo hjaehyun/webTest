@@ -16,3 +16,5 @@
 .social { display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; border-radius: 12px; font-size: 15px; font-weight: 600; text-decoration: none; }
 .kakao { background: #FEE500; color: rgba(0, 0, 0, 0.85); }
 .google { background: #FFFFFF; color: #1F1F1F; border: 1px solid #747775; }
+.legal { margin: 4px 0 0; text-align: center; font-size: 11px; line-height: 1.5; color: var(--faint, var(--muted)); }
+.legal a { color: var(--muted); text-decoration: underline; }
