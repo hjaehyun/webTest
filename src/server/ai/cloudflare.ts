@@ -6,7 +6,8 @@
 // Model names live only in env (.env.example has the defaults). Same fallback rules as the text AI.
 
 import type { DaySummary, StyleId } from "@/lib/types";
-import { ModelHttpError, runWithFallback } from "./fallback";
+import { ModelHttpError } from "./fallback";
+import { drawWithRetry } from "./imageFlow";
 import { type ImageModel, buildImagePrompt, checkImage, parseImageModels } from "./image";
 import type { ImageProvider, ImageResult } from "./types";
 
@@ -47,16 +48,17 @@ export const cloudflareImage: ImageProvider = {
   name: "cloudflare",
 
   async draw(summary: DaySummary, style: StyleId): Promise<ImageResult> {
-    const prompt = buildImagePrompt(summary, style);
     const models = parseImageModels(process.env.CLOUDFLARE_IMAGE_MODELS);
-    const r = await runWithFallback<Uint8Array | null>({
+    // Content-filter refusals go to the next model, then once more with the plain scene prompt (imageFlow.ts).
+    const r = await drawWithRetry({
       models: models.map((m) => m.model),
-      call: (model, signal) => run(models.find((m) => m.model === model)!, prompt, signal),
+      prompt: buildImagePrompt(summary, style),
+      safePrompt: buildImagePrompt({ scene: summary.scene }, style),
+      call: (model, prompt, signal) => run(models.find((m) => m.model === model)!, prompt, signal),
       check: checkImage,
-      fallback: async () => null, // the scene's SVG placeholder
       timeoutMs: TIMEOUT_MS,
     });
-    if (r.model) console.info(`[ai] image drawn by ${r.model}`);
-    return { scene: summary.scene, image: r.value };
+    if (r.model) console.info(`[ai] image drawn by ${r.model}${r.usedSafePrompt ? " (plain scene prompt)" : ""}`);
+    return { scene: summary.scene, image: r.image }; // null -> the scene's SVG placeholder
   },
 };

@@ -98,7 +98,9 @@ DECISION_SCOPE {
   ELSE { SET prompt = 장면 종류 기본 문구 + 그림체 문구 }
 
   IF cf_status == 429 OR cf_status >= 500 OR cf_status == 404 OR elapsed_ms > 45000 OR image_invalid OR network_error { SET next = "다음 모델" }
+  ELIF cf_status == 400 AND cf_message HAS_ANY ["NSFW", "safety", "unsafe content", "content policy"] { SET next = "다음 모델"  SET prompt_refused = true }
   ELIF cf_status == 400 OR cf_status == 401 OR cf_status == 403 { SET next = "SVG 예시 그림" }
+  ELIF models_exhausted AND prompt_refused AND prompt != 장면 기본 문구 { SET next = "장면 기본 문구 + 그림체 문구로 모델 목록 한 번 더" }
   ELIF models_exhausted { SET next = "SVG 예시 그림"  SET imageUrl = null }
 
   IF upload_failed { SET imageUrl = null  EMIT WARNING "Storage 업로드 실패: SVG 예시 그림" }
@@ -260,7 +262,8 @@ DECISION_SCOPE {
   }
   RULE 대체순서 {
     SEVERITY = CRITICAL
-    ASSERT 429·5xx·404·45초 초과·이미지 아님 → 다음 모델, 400·401·403 → SVG 예시 그림
+    ASSERT 429·5xx·404·45초 초과·이미지 아님·내용 필터 거부(400 NSFW) → 다음 모델, 그 밖의 400·401·403 → SVG 예시 그림
+    ASSERT 모든 모델이 내용 필터로 거부하면 장면 기본 문구로 한 번 더 시도하고, 그것도 실패하면 SVG 예시 그림 (무한 반복 없음)
     ON_FAIL → EMIT ERROR "cloudflare.ts 분류 규칙이 @BRANCH와 다르다"
   }
   RULE 탈퇴파일정리 {
