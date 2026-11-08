@@ -136,7 +136,7 @@ function Detail() {
           </span>
           <figcaption>
             <span className={s.badge}>{styleOf(art.style).label}</span>
-            <span role="status">{redrawing ? "다시 그리는 중…" : "[이미지 AI 연결 전 · 예시 그림]"}</span>
+            <span role="status">{redrawing ? "다시 그리는 중…" : art.imageUrl ? "" : "예시 그림 · 다시 그리기로 그려볼 수 있어요"}</span>
           </figcaption>
         </figure>
 
