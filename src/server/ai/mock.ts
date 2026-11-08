@@ -54,7 +54,7 @@ export const mockText: TextProvider = {
         `[모의 해설] ${periodLabel} 동안 그림 ${count}장이 모였어요. ` +
         `가장 자주 등장한 건 '${lead}'${josa(lead, "이었", "였")}고` +
         (second ? `, 그다음은 '${second}'${josa(second, "이었", "였")}어요.` : "요.") +
-        " 실제 버전에서는 저장된 장면 요약을 텍스트 AI에 넣어 이 자리에 해설을 씁니다.",
+        " 실제 버전에서는 저장된 장면 요약을 텍스트 AI에 넣어 이 자리에 해설을 써요.",
     };
   },
 };

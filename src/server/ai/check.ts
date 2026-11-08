@@ -28,8 +28,21 @@ export function checkSummary(v: unknown): DaySummary | null {
   };
 }
 
+/**
+ * Every sentence ends in 해요체 (~요, or ~죠). Trailing punctuation, ellipses and emoji are ignored.
+ * The curator's voice is one polite-casual tone; a 합니다/한다 sentence makes the answer unusable.
+ */
+export function isHaeyo(text: string): boolean {
+  const sentences = text
+    .split(/(?<=[.!?…。])\s+|\n+/)
+    .map((s) => s.replace(/[\s.!?…。~"'”’)\]\p{Extended_Pictographic}️]+$/u, ""))
+    .filter(Boolean);
+  return sentences.length > 0 && sentences.every((s) => /[요죠]$/.test(s));
+}
+
 export function checkCuration(v: unknown): CurationText | null {
   const o = rec(v);
   if (!o || !isText(o.headline, CURATION_LIMITS.headline) || !isText(o.body, CURATION_LIMITS.body)) return null;
+  if (!isHaeyo(o.body)) return null; // mixed tone -> the caller tries the next model
   return { headline: o.headline, body: o.body };
 }

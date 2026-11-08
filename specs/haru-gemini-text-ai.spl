@@ -202,7 +202,7 @@ DECISION_SCOPE {
       headline: TEXT[1..60]
       body: TEXT[1..600]
     }
-    RULE = "기간 이름, 그림 수, 자주 나온 태그, 장면 요약들만 입력으로 쓴다. 조각글 원문은 보내지 않는다"
+    RULE = "기간 이름, 그림 수, 자주 나온 태그, 장면 요약들만 입력으로 쓴다. 조각글 원문은 보내지 않는다. body는 모든 문장이 해요체(~요, ~죠로 끝남). 한 문장이라도 어기면 쓸 수 없는 응답으로 보고 다음 모델로 넘어간다"
   }
   UNIT model_routing {
     STRUCT {
@@ -278,6 +278,11 @@ DECISION_SCOPE {
     SEVERITY = CRITICAL
     ASSERT npm test 통과 AND songs e2e 통과 AND security-smoke 통과 AND npm run build 성공
     ON_FAIL → EMIT ERROR "기존 기능이 깨졌다"
+  }
+  RULE 큐레이터말투 {
+    SEVERITY = WARNING
+    ASSERT 큐레이터 body의 모든 문장 끝이 요 또는 죠 (문장부호·이모지 제외)
+    ON_FAIL → EMIT WARNING "합니다체·한다체가 섞인 해설: 다음 모델로 넘어간다"
   }
   RULE 개발한도보호 {
     SEVERITY = WARNING
