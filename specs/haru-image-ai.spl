@@ -1,0 +1,291 @@
+@SCHEMA = "SPL-SYNTAX-v1.2"
+
+@META {
+  type = "개발지시"
+  version = "1.0"
+  reader = "코딩 에이전트 (Claude Code)"
+  success = "배포 환경에서 마감하면 Gemini가 쓴 imagePrompt와 사용자의 그림체로 Cloudflare Workers AI(FLUX)가 그림을 그리고, 그 그림이 비공개 Supabase Storage에 저장되어 그림 상세·갤러리(본인)와 공개 전시(공개된 그림만)에 서명 URL로 보인다. 모델이 모두 실패해도 SVG 예시 그림으로 마감이 끝난다"
+  failure = "그림 생성 실패로 마감이 실패하거나, Cloudflare 토큰이 브라우저·저장소·로그에 노출되거나, 남의 폴더 파일이 내 그림으로 저장되거나, 비공개 그림이 URL만으로 열리거나, 다시 그리기 후 이전 파일이 남거나, 기존 시험(npm test, songs e2e, security-smoke)이 깨진다"
+  constraint = "웹프로그래밍 수업 팀 프로젝트. Cloudflare Workers AI 무료 등급만 사용. 텍스트 AI 명세 haru-gemini-text-ai(SPL rev 2)의 구조(env 모델 목록, 순서대로 대체, 마지막은 mock)를 따른다"
+}
+
+@INTENT {
+  CORE = "하루 조각글이 실제 그림 한 장이 되게 한다. 비용 없이, 실패해도 마감은 끝나게"
+  MUST_PRESERVE [
+    "POST /api/draw 요청 형태와 사용자별 하루 한도 consume_ai_quota draw 10"
+    "AI_IMAGE_PROVIDER=mock 일 때 지금과 똑같이 SVG 예시 그림으로 동작"
+    "그림을 직접 수정·삭제하지 못하는 DB 규칙(M3)과 redraw_artwork의 전시 위치·노래 유지"
+    "공개 전시 응답에 entries·이메일·mood·song_query가 나가지 않음"
+    "탈퇴하면 계정의 모든 데이터가 지워진다 (Storage의 본인 폴더 그림 파일 포함)"
+    "기존 시험 통과: npm test, songs e2e, scripts/security-smoke.sh 28항목"
+  ]
+  MUST_NOT [
+    "Cloudflare 토큰을 코드·저장소·브라우저 번들·로그에 남기기"
+    "그림 생성 실패 때문에 마감이나 다시 그리기를 실패로 끝내기"
+    "모델 이름을 코드에 고정하기 (env로만)"
+    "남의 폴더 경로를 image_path로 저장하기"
+    "공개 URL로 그림 제공하기 (항상 서명 URL, 유효 1시간)"
+    "공개 전시에 걸리지 않은 남의 그림에 서명 URL 만들기"
+    "imagePrompt에 사람 이름, 연락처, 학교, 글자·문장 그려 넣기 지시를 포함하기"
+    "새 npm 패키지 추가 (Cloudflare REST를 fetch로, Storage는 기존 supabase-js)"
+    "로컬 개발·e2e에서 Cloudflare 무료 한도 쓰기 (기본 mock)"
+  ]
+}
+
+DECISION_SCOPE {
+  STRATEGY = USER
+  REQUIREMENTS = USER
+  STRUCTURE = BOTH
+  EXPRESSION = AI
+  VALIDATION = BOTH
+  FINAL_APPROVAL = USER
+}
+
+@ENV {
+  LANG = "TypeScript 5 (Node.js 24.14.1)"
+  FRAMEWORK = "Next.js 15.5.28 App Router + React 19.1"
+  RUNTIME = "Windows 11 개발 PC, 배포는 Vercel 서버리스 (Node.js)"
+  TOOLCHAIN = "npm, tsc, eslint, node --test (Node 24 타입 제거), @supabase/supabase-js 2.118, @supabase/ssr 0.12"
+  ROOT = "C:\Users\Jaehyeon\Desktop\26_2\웹프로그래밍\하루조각\haru-jogak"
+  REPO = "GitHub hjaehyun/webTest (로컬 하루조각은 git 아님, 클론에 복사해 커밋)"
+  BRANCH = "작업 후 main에 push"
+  BUILD = "npm run build"
+  RUN = "npm run dev (http://localhost:3000)"
+  DB supabase {
+    PROVIDER = "Supabase Postgres (RLS) + Storage 버킷 artworks (비공개, 서명 URL)"
+    LOCATION = "Supabase 프로젝트 (env SUPABASE_URL)"
+    SECRET_REF = "SUPABASE_SECRET_KEY"
+    CONFIG_REF = "haru-jogak/supabase/schema.sql, haru-jogak/supabase/migrations/ (SQL Editor에서 사람이 실행)"
+  }
+  INFRA {
+    배포 = "Vercel 자동 배포 dayily-diary-seven.vercel.app"
+    이미지AI = "Cloudflare Workers AI REST api.cloudflare.com/client/v4/accounts/{id}/ai/run/{model}"
+    텍스트AI = "Google Gemini (haru-gemini-text-ai)"
+  }
+  CONSTRAINT [
+    "Cloudflare 계정·토큰은 env CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN 으로만 읽는다 (서버 전용)"
+    "모델 목록은 env CLOUDFLARE_IMAGE_MODELS (쉼표 구분, 항목마다 요청 형식 접두사 json: 또는 multipart:, 없으면 json)"
+    "Cloudflare 무료 등급은 하루 10,000 neurons"
+    "Supabase 무료 Storage 1GB (그림 약 0.9MB, 약 1,100장)"
+    "schema.sql 변경은 재실행해도 안전해야 하고, 변경분은 supabase/migrations/ 에도 둔다"
+  ]
+  FORBIDDEN_ENV [
+    ".env.local 내용 출력·커밋"
+    "Supabase SQL을 에이전트가 직접 실행 (사람이 SQL Editor에서 실행)"
+    "force push"
+  ]
+}
+
+@INPUT {
+  REQUIRED {
+    day_summary: TEXT
+    image_prompt: TEXT[1..600]
+    style: ENUM[water, pencil, crayon, story]
+    date: DATE
+  }
+  OPTIONAL {
+    model_list: TEXT
+    previous_image_path: TEXT
+  }
+}
+
+@BRANCH {
+  IF AI_IMAGE_PROVIDER == "cloudflare" AND CLOUDFLARE_ACCOUNT_ID EXISTS AND CLOUDFLARE_API_TOKEN EXISTS { SET image_ai = "cloudflare" }
+  ELIF AI_IMAGE_PROVIDER == "cloudflare" { SET image_ai = "mock"  EMIT WARNING "Cloudflare 키 없음: SVG 예시 그림으로 동작" }
+  ELSE { SET image_ai = "mock" }
+
+  IF imagePrompt_valid { SET prompt = imagePrompt + 그림체 문구 }
+  ELSE { SET prompt = 장면 종류 기본 문구 + 그림체 문구 }
+
+  IF cf_status == 429 OR cf_status >= 500 OR cf_status == 404 OR elapsed_ms > 45000 OR image_invalid OR network_error { SET next = "다음 모델" }
+  ELIF cf_status == 400 OR cf_status == 401 OR cf_status == 403 { SET next = "SVG 예시 그림" }
+  ELIF models_exhausted { SET next = "SVG 예시 그림"  SET imageUrl = null }
+
+  IF upload_failed { SET imageUrl = null  EMIT WARNING "Storage 업로드 실패: SVG 예시 그림" }
+
+  IF image_path 첫칸 == 로그인 사용자 id AND image_path 형식 일치 { SET save = "image_path 저장" }
+  ELSE { SET save = "거부 (400, DB check로도 거부)" }
+
+  IF 보는사람 == 그림주인 OR 그림이 공개 전시에 걸림 { SET view = "서버가 서명 URL 1시간 발급" }
+  ELSE { SET view = "그림 없음 (발급 안 함)" }
+
+  FALLBACK { ASK "그림 응답을 분류할 수 없다. 어떻게 처리할까?" OPTIONS["다음 모델로", "SVG 예시 그림으로", "작업 중단"] }
+}
+
+@PIPELINE {
+  PHASE 기준확인 {
+    DESCRIPTION = "이 SPL 최신 리비전과 텍스트 AI 명세를 읽고, Cloudflare 모델 이름(flux-1-schnell, flux-2-klein-4b)과 각 모델의 입력·출력 형식을 공식 문서로 확인한다"
+    TRACE = SUMMARY
+    OUTPUT → 기준rev
+    GATE = AUTO
+  }
+  PHASE 프롬프트 {
+    DESCRIPTION = "DaySummary에 imagePrompt 추가 (Gemini 스키마·프롬프트·check.ts, mock은 장면 종류 기본 문구). 그림체별 문구와 프롬프트 조립·검사(1~600자, 이름·글자 지시 금지 규칙은 프롬프트로, 서버는 길이·숫자·@·URL 검사)는 순수 함수로 두고 테스트한다"
+    DEPENDS_ON = 기준확인
+    TRACE = SUMMARY
+    RUN npm test
+    OUTPUT → imagePrompt
+    GATE = AUTO
+  }
+  PHASE 그림제공자 {
+    DESCRIPTION = "src/server/ai/cloudflare.ts: Workers AI REST를 fetch로 호출, env 모델 목록을 fallback.ts(runWithFallback)로 순서대로 시도, 응답 이미지 검사(JPEG/PNG 시그니처, 크기 상한). ImageProvider.draw가 이미지 바이트를 돌려주도록 계약 확장, index.ts에 cloudflare 선택지, .env.example 변수"
+    DEPENDS_ON = 프롬프트
+    TRACE = SUMMARY
+    SCAN src FOR "flux-"
+    ON_FAIL → EMIT ERROR "모델 이름이 코드에 박혀 있다. env로 옮긴다"
+    OUTPUT → cloudflare.ts
+    GATE = AUTO
+  }
+  PHASE 저장 {
+    DESCRIPTION = "schema.sql·마이그레이션: 버킷 artworks를 비공개로(public = false), 본인 폴더 읽기 정책 추가, daily_artworks.image_path 컬럼(형식 check + 첫 칸이 user_id인지 check) + insert 권한, redraw_artwork가 새 image_path를 받고 이전 경로를 돌려주도록 확장. POST /api/draw: 그림 바이트를 로그인 사용자 권한으로 artworks/{uid}/{date}-{무작위 32자}.jpg 에 업로드하고 imagePath와 즉시 표시용 서명 URL을 반환. POST /api/me/artworks·redraw: imagePath가 본인 폴더 형식일 때만 저장. 다시 그리기 성공 후 이전 파일 삭제(실패해도 다시 그리기는 성공)"
+    DEPENDS_ON = 그림제공자
+    TRACE = SUMMARY
+    OUTPUT → 저장경로
+    GATE = AUTO
+  }
+  PHASE 스키마실행 {
+    DESCRIPTION = "마이그레이션 SQL을 재현님께 드리고 SQL Editor 실행을 요청한 뒤, 확인 스크립트로 버킷 비공개(공개 URL 접근 400/404), 본인 폴더 읽기, image_path 저장 권한·형식·주인 check, redraw를 실제 DB에서 시험한다"
+    DEPENDS_ON = 저장
+    TRACE = SUMMARY
+    OUTPUT → 스키마확인
+    GATE = CONFIRM
+  }
+  PHASE 화면 {
+    DESCRIPTION = "GET /api/me와 공개 전시 조회가 image_path마다 서명 URL(1시간, 한 번에 묶어서 발급)을 만들어 Artwork·PublicArtwork.imageUrl로 준다. 공개 전시는 RLS로 걸러진 그림에만 발급. 그림 상세·갤러리 달력·공개 전시는 imageUrl이 있으면 img, 없거나 만료로 로드 실패하면 Art(SVG). '그림 저장' 버튼은 사진이면 jpg 내려받기. 가입·가이드 안내에 그림은 Cloudflare Workers AI로 그려진다는 문구"
+    DEPENDS_ON = 스키마실행
+    TRACE = SUMMARY
+    OUTPUT → 화면
+    GATE = AUTO
+  }
+  PHASE 시험 {
+    DESCRIPTION = "npm test, tsc, lint, build, songs e2e, security-smoke, 그림 e2e(mock: 남의 폴더 경로 거부, 공개 URL로 접근 불가, 비공개 전시 그림은 서명 URL 없음, redraw 후 이전 파일 삭제), 브라우저 마감 흐름. 그다음 재현님 확인 후 실제 Cloudflare로 그림 1장 생성해 시간·용량·화면 표시 확인"
+    DEPENDS_ON = 화면
+    TRACE = FULL
+    RUN npm test
+    REVIEW 실제 그림 1장
+    OUTPUT → 시험결과
+    GATE = CONFIRM
+  }
+  PHASE 반영 {
+    DESCRIPTION = "클론 pull → 변경 복사(.env.local 제외) → 커밋(Co-Authored-By 줄) → main에 push → Vercel 배포 smoke. Vercel 환경변수(AI_IMAGE_PROVIDER, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, CLOUDFLARE_IMAGE_MODELS)는 재현님이 설정"
+    DEPENDS_ON = 시험
+    TRACE = SUMMARY
+    OUTPUT → 배포
+    GATE = CONFIRM
+  }
+  PHASE 보고 {
+    DESCRIPTION = "기준 rev, 실행 명령, 실제 시험 결과를 report/YYYY-MM-DD_작업보고서.md와 대화로 보고하고 CLAUDE.md를 갱신한다"
+    DEPENDS_ON = 반영
+    TRACE = SUMMARY
+    OUTPUT → 작업보고서
+    GATE = AUTO
+  }
+}
+
+@TEMPLATE {
+  UNIT summarize_response_ext {
+    STRUCT {
+      imagePrompt: TEXT[1..600]
+    }
+    RULE = "haru-gemini-text-ai summarize_response에 필드 하나를 더한다. 영어, 한 장면, 시간 순 요소는 한 그림 안에서 자연스럽게(예: 비 오는 날이면 햇살과 비를 같은 하늘에 섞지 않는다), 사람은 뒷모습·작게, 글자 없음"
+  }
+  UNIT style_phrase {
+    STRUCT {
+      water: TEXT
+      pencil: TEXT
+      crayon: TEXT
+      story: TEXT
+    }
+    RULE = "서버가 붙이는 고정 영어 문구. 예: water = warm watercolor picture diary, soft edges, paper texture"
+  }
+  UNIT drawing {
+    STRUCT {
+      scene: ENUM[day, cat, rain, park, cafe, night]
+      imagePath: TEXT
+      imageUrl: URL
+    }
+    RULE = "imagePath는 {uid}/{YYYY-MM-DD}-{영숫자 32자}.jpg 이거나 null. imageUrl은 그 경로의 서명 URL(유효 1시간)이거나 null. null이면 화면은 scene SVG"
+  }
+  UNIT model_routing {
+    STRUCT {
+      image: LIST<TEXT>
+    }
+    RULE = "기본값 json:@cf/black-forest-labs/flux-1-schnell(1024 고정, 약 2~6초), multipart:@cf/black-forest-labs/flux-2-klein-4b(768 지정, 약 11초). 모델마다 요청 형식이 달라 접두사로 구분한다. 목록 끝 다음은 항상 SVG 예시 그림"
+  }
+  MAP {
+    [POST /api/summarize] → summarize_response_ext
+    [POST /api/draw] → drawing
+    [env CLOUDFLARE_IMAGE_MODELS] → model_routing
+  }
+}
+
+@STYLE {
+  SCOPE[*] {
+    "화면 문구는 하루조각 기존 말투: 짧은 해요체"
+    DENY [ "에러 코드나 영어 원문을 사용자에게 그대로 노출" ]
+  }
+  SCOPE[프롬프트] {
+    "imagePrompt는 영어 한 문단, 그릴 대상·배경·빛·분위기 순서"
+    DENY [ "사람 이름이나 실제 장소명", "그림 안에 글자·문장 쓰기 지시", "사진처럼 실제 인물 묘사" ]
+    EXAMPLE {
+      GOOD = "a brown cat napping on a sunny sidewalk in the morning, then a rainy window desk with homework and an empty snack bag in the evening light"
+      BAD = "민지 and me at Gangnam station with a sign saying happy birthday"
+    }
+  }
+}
+
+@VALIDATE {
+  RULE 토큰비노출 {
+    SEVERITY = CRITICAL
+    ASSERT NOT 저장소 CONTAINS CLOUDFLARE_API_TOKEN 값
+    ASSERT NOT 클라이언트번들 CONTAINS "CLOUDFLARE_API_TOKEN"
+    ON_FAIL → EMIT ERROR "토큰이 노출됐다. 커밋·배포를 멈춘다"
+  }
+  RULE 마감무중단 {
+    SEVERITY = CRITICAL
+    ASSERT 모든 모델 실패 또는 업로드 실패 시 draw 응답 200 AND imageUrl == null
+    ON_FAIL → EMIT ERROR "그림 실패가 마감 실패로 이어진다"
+  }
+  RULE 본인폴더만 {
+    SEVERITY = CRITICAL
+    ASSERT image_path 저장 요청이 남의 uid 폴더이거나 형식이 다르면 400 AND DB check도 거부
+    ON_FAIL → EMIT ERROR "다른 사람 그림을 내 그림으로 저장할 수 있다"
+  }
+  RULE 비공개유지 {
+    SEVERITY = CRITICAL
+    ASSERT 공개 URL(/storage/v1/object/public/artworks/...) 접근이 실패한다
+    ASSERT 공개 전시에 걸리지 않은 그림은 공개 전시 응답에 imageUrl이 없다
+    ASSERT 서명 URL 유효기간 == 3600초
+    ON_FAIL → EMIT ERROR "비공개 그림이 밖으로 샌다"
+  }
+  RULE 대체순서 {
+    SEVERITY = CRITICAL
+    ASSERT 429·5xx·404·45초 초과·이미지 아님 → 다음 모델, 400·401·403 → SVG 예시 그림
+    ON_FAIL → EMIT ERROR "cloudflare.ts 분류 규칙이 @BRANCH와 다르다"
+  }
+  RULE 탈퇴파일정리 {
+    SEVERITY = CRITICAL
+    ASSERT 탈퇴 후 Storage artworks/{uid}/ 폴더가 비어 있다
+    ON_FAIL → EMIT ERROR "탈퇴한 사람의 그림 파일이 남는다"
+  }
+  RULE 이전파일정리 {
+    SEVERITY = WARNING
+    ASSERT 다시 그리기 성공 후 이전 image_path 파일이 Storage에 없다
+    ON_FAIL → EMIT WARNING "다시 그린 그림의 이전 파일이 남아 Storage를 차지한다"
+  }
+  RULE 모델명env {
+    SEVERITY = WARNING
+    ASSERT NOT src CONTAINS "flux-" 리터럴 (주석·.env.example 제외)
+    ON_FAIL → EMIT WARNING "모델 이름이 코드에 고정돼 있다"
+  }
+  RULE 기존시험 {
+    SEVERITY = CRITICAL
+    ASSERT npm test 통과 AND songs e2e 통과 AND security-smoke 통과 AND npm run build 성공
+    ON_FAIL → EMIT ERROR "기존 기능이 깨졌다"
+  }
+  RULE 개발한도보호 {
+    SEVERITY = WARNING
+    ASSERT .env.example 의 AI_IMAGE_PROVIDER == "mock"
+    ON_FAIL → EMIT WARNING "로컬 기본값이 cloudflare라 개발 중 무료 한도를 쓴다"
+  }
+}

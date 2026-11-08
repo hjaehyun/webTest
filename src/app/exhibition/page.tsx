@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import Art from "@/components/Art";
+import Picture from "@/components/Picture";
 import { BottomNav, IconNext, ProfileButton, Screen } from "@/components/ui";
 import { monthDay } from "@/lib/date";
 import { useStore } from "@/lib/store";
@@ -84,7 +84,7 @@ function Exhibition() {
             {works.map((w, i) => (
               <figure key={w.date} className={s.work}>
                 <Link href={`/gallery/${w.date}`} className={s.workArt}>
-                  <Art scene={w.scene} />
+                  <Picture scene={w.scene} imageUrl={w.imageUrl} alt={w.summary} />
                   <span className={s.no}>{i + 1}</span>
                 </Link>
                 <figcaption>

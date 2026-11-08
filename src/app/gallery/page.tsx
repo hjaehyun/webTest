@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import Art from "@/components/Art";
+import Picture from "@/components/Picture";
 import { BottomNav, IconBack, IconNext, ProfileButton, Screen } from "@/components/ui";
 import { monthDay, toKey, todayKey, WEEKDAY_NAMES } from "@/lib/date";
 import { sortedArtworks, useStore } from "@/lib/store";
@@ -84,7 +84,7 @@ function Gallery() {
             if (c.kind === "art")
               return (
                 <Link key={c.key} href={`/gallery/${c.key}`} className={s.tile} aria-label={`${monthDay(c.key)} 그림 보기`}>
-                  <Art scene={db.artworks[c.key].scene} />
+                  <Picture scene={db.artworks[c.key].scene} imageUrl={db.artworks[c.key].imageUrl} alt={db.artworks[c.key].summary} />
                   <span className={s.dnum}>{c.day}</span>
                 </Link>
               );
@@ -123,7 +123,7 @@ function Gallery() {
             {works.slice(0, 4).map((w) => (
               <Link key={w.date} href={`/gallery/${w.date}`} className={s.recentItem}>
                 <span className="art-frame">
-                  <Art scene={w.scene} />
+                  <Picture scene={w.scene} imageUrl={w.imageUrl} alt={w.summary} />
                 </span>
                 <span className="hand">{monthDay(w.date)}</span>
               </Link>

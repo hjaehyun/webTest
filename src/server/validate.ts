@@ -52,7 +52,7 @@ export const isTagList = (v: unknown): v is string[] =>
 
 // ---- picture body (POST /api/me/artworks, POST /api/me/artworks/:date/redraw) ----
 
-export type ArtworkInput = { scene: Scene; style: StyleId; summary: string; tags: string[]; mood?: Mood; songQuery?: string };
+export type ArtworkInput = { scene: Scene; style: StyleId; summary: string; tags: string[]; mood?: Mood; songQuery?: string; imagePath?: string | null };
 
 /**
  * Checks a picture's fields; returns the message to answer 400 with, or null when fine.

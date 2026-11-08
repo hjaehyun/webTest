@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PublicArtwork, PublicExhibition, Scene } from "@/lib/types";
+import { signImagePaths } from "./images";
 import { toSong } from "./songs";
 
 type ItemRow = {
@@ -14,7 +15,7 @@ type ItemRow = {
   daily_artworks: {
     day: string;
     scene: string;
-    image_url: string | null;
+    image_path: string | null;
     summary: string;
     status: string;
     song_pool: { id: number; video_id: string; title: string; channel: string } | null;
@@ -38,18 +39,21 @@ export async function loadPublicExhibition(
     sb.from("profiles").select("nick").eq("user_id", ex.user_id).maybeSingle(),
     sb
       .from("exhibition_items")
-      .select("position, note, daily_artworks(day, scene, image_url, summary, status, song_pool(id, video_id, title, channel))")
+      .select("position, note, daily_artworks(day, scene, image_path, summary, status, song_pool(id, video_id, title, channel))")
       .eq("exhibition_id", ex.id)
       .order("position"),
   ]);
   if (profileRes.error) throw new Error(`${profileRes.error.code} ${profileRes.error.message}`);
   if (itemRes.error) throw new Error(`${itemRes.error.code} ${itemRes.error.message}`);
 
+  const rows = (itemRes.data ?? []) as unknown as ItemRow[];
+  // Only pictures RLS returned for this exhibition (public, or the owner's own preview) get signed URLs.
+  const signed = await signImagePaths(rows.map((r) => (r.daily_artworks?.status === "done" ? r.daily_artworks.image_path : null)));
   const items: PublicArtwork[] = [];
-  for (const r of (itemRes.data ?? []) as unknown as ItemRow[]) {
+  for (const r of rows) {
     const a = r.daily_artworks;
     if (!a || a.status !== "done") continue; // hidden by RLS or still drawing
-    items.push({ date: a.day, scene: a.scene as Scene, imageUrl: a.image_url, summary: a.summary, note: r.note, song: a.song_pool ? toSong(a.song_pool) : null });
+    items.push({ date: a.day, scene: a.scene as Scene, imageUrl: a.image_path ? (signed.get(a.image_path) ?? null) : null, summary: a.summary, note: r.note, song: a.song_pool ? toSong(a.song_pool) : null });
   }
 
   return {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import Art from "@/components/Art";
+import Picture from "@/components/Picture";
 import { Screen, TopBar } from "@/components/ui";
 import { curationStats, writeCuration } from "@/lib/ai";
 import type { CurationText } from "@/lib/types";
@@ -86,7 +87,7 @@ function Curator() {
             <div className={s.thumbs}>
               {c.picks.map((d) => (
                 <Link key={d} href={`/gallery/${d}`} className="art-frame">
-                  <Art scene={db.artworks[d].scene} />
+                  <Picture scene={db.artworks[d].scene} imageUrl={db.artworks[d].imageUrl} alt={db.artworks[d].summary} />
                 </Link>
               ))}
             </div>

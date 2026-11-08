@@ -33,6 +33,8 @@ export type Artwork = {
   mood?: Mood | null; // picked by the text AI; keys the song recommendation
   song?: Song | null; // null until one is recommended
   songQuery?: string; // sent once when saving; never read back
+  imagePath?: string | null; // sent once when saving/redrawing; never read back
+  imageUrl?: string | null; // signed URL (1 hour) of the drawn picture; null/absent = scene placeholder
   summarySource?: "ai" | "fallback"; // this session only: fallback = AI unavailable, mock summary
 };
 
@@ -53,11 +55,16 @@ export type DaySummary = {
   scene: Scene;
   mood: Mood;
   songQuery?: string; // YouTube search words the text AI wrote (genre/mood only); fixed words when absent
+  imagePrompt?: string; // English scene prompt for the image AI; scene default words when absent
   source?: "ai" | "fallback"; // fallback = the AI was unavailable and mock answered (shown, not stored)
 };
 
 /** Image AI result. imageUrl stays null until a real image provider is wired up. */
-export type Drawing = { scene: Scene; imageUrl: string | null };
+export type Drawing = {
+  scene: Scene;
+  imagePath: string | null; // file in the private bucket, saved with the picture
+  imageUrl: string | null; // 1-hour signed URL to show it now; null = use the scene placeholder
+};
 
 /** Curator commentary input; counting happens before the AI call. */
 export type CurationInput = {

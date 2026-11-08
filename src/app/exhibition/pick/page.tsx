@@ -1,6 +1,6 @@
 "use client";
 
-import Art from "@/components/Art";
+import Picture from "@/components/Picture";
 import { Screen, TopBar } from "@/components/ui";
 import { monthDay } from "@/lib/date";
 import { sortedArtworks, useStore } from "@/lib/store";
@@ -35,7 +35,7 @@ function Pick() {
                 aria-label={`${monthDay(w.date)} 그림`}
                 onClick={() => toggleExhibit(w.date)}
               >
-                <Art scene={w.scene} />
+                <Picture scene={w.scene} imageUrl={w.imageUrl} alt={w.summary} />
                 <span className={s.date}>{monthDay(w.date)}</span>
                 {on && <span className={s.badge}>{order + 1}</span>}
               </button>

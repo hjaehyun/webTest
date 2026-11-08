@@ -4,6 +4,7 @@
 import { NextResponse } from "next/server";
 import { checkPassword, clearAuthCookies, requireUser } from "@/server/auth";
 import { loadDb } from "@/server/db/data";
+import { removeUserImages } from "@/server/db/images";
 import { DB_FAILED, bad, fail, isObj, readJson, unauthorized } from "@/server/http";
 import { supabaseAdmin } from "@/server/supabase";
 
@@ -27,7 +28,8 @@ export async function DELETE(req: Request) {
     if (!(await checkPassword(me.user.email ?? "", b.password))) {
       return NextResponse.json({ error: "비밀번호가 맞지 않아요" }, { status: 403 });
     }
-    // Deleting the auth user cascades to every table (on delete cascade in schema.sql).
+    // Picture files aren't rows, so they go first; then deleting the auth user cascades to every table.
+    await removeUserImages(me.user.id);
     const { error } = await supabaseAdmin().auth.admin.deleteUser(me.user.id);
     if (error) throw error;
     await clearAuthCookies();

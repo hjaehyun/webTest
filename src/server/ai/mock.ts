@@ -1,7 +1,7 @@
 // Mock provider: keyword rules and canned text. Default until an AI vendor is chosen.
 
-import type { CurationInput, CurationText, DaySummary, Drawing, Entry, Mood, Scene } from "@/lib/types";
-import type { ImageProvider, TextProvider } from "./types";
+import type { CurationInput, CurationText, DaySummary, Entry, Mood, Scene } from "@/lib/types";
+import type { ImageProvider, ImageResult, TextProvider } from "./types";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -63,8 +63,8 @@ export const mockImage: ImageProvider = {
   name: "mock",
 
   // Returns a placeholder scene; components/Art.tsx draws it as SVG.
-  async draw(summary: DaySummary): Promise<Drawing> {
+  async draw(summary: DaySummary): Promise<ImageResult> {
     await sleep(1800);
-    return { scene: summary.scene, imageUrl: null };
+    return { scene: summary.scene, image: null };
   },
 };

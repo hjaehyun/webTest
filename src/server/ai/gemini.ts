@@ -36,8 +36,9 @@ const SUMMARY_SCHEMA = {
     scene: { type: "string", enum: SCENES },
     mood: { type: "string", enum: MOODS },
     songQuery: { type: "string" },
+    imagePrompt: { type: "string" },
   },
-  required: ["summary", "tags", "scene", "mood", "songQuery"],
+  required: ["summary", "tags", "scene", "mood", "songQuery", "imagePrompt"],
 };
 
 const CURATION_SCHEMA = {
@@ -53,6 +54,7 @@ const SUMMARY_SYSTEM = [
   "- scene: 목록에서 가장 가까운 배경 하나.",
   "- mood: 목록에서 그날 전체 분위기에 가장 가까운 하나.",
   "- songQuery: 그날에 어울리는 노래를 YouTube에서 찾을 검색어(25자 이내). 장르·분위기·날씨·시간대·상황 단어만 쓴다. 사람 이름, 장소, 학교, 회사, 숫자, 조각글 문장을 넣지 않는다. 예: '비 오는 밤 잔잔한 어쿠스틱'.",
+  "- imagePrompt: 그림 AI에 보낼 영어 프롬프트 한 문단(400자 이내). 한 장의 그림으로 그릴 대상·배경·빛·분위기 순서로 쓴다. 시간 순 요소는 한 화면에 자연스럽게 배치하고, 서로 어울리지 않는 날씨(햇살과 비 등)는 같은 하늘에 섞지 말고 창 안팎이나 왼쪽·오른쪽처럼 나눠 둔다. 사람은 작게 또는 뒷모습으로. 사람 이름, 실제 장소명, 숫자, 그림 속 글자는 넣지 않는다. 그림체(수채화 등)는 쓰지 않는다.",
   "조각글에 없는 사실을 지어내지 않는다.",
 ].join("\n");
 

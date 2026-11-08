@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import Art from "@/components/Art";
+import Picture from "@/components/Picture";
 import { BottomNav, ProfileButton, Screen } from "@/components/ui";
 import { drawScene, summarizeDay } from "@/lib/ai";
 import { clock, longDate, monthDay, todayKey, weekdayName } from "@/lib/date";
@@ -91,8 +91,8 @@ function Today() {
     try {
       const summary = await summarizeDay(entries);
       setStage(2);
-      const { scene } = await drawScene(summary, style);
-      saveArtwork({ date, scene, style, summary: summary.summary, tags: summary.tags, mood: summary.mood, songQuery: summary.songQuery, summarySource: summary.source, entries });
+      const { scene, imagePath, imageUrl } = await drawScene(summary, style, date);
+      saveArtwork({ date, scene, style, summary: summary.summary, tags: summary.tags, mood: summary.mood, songQuery: summary.songQuery, summarySource: summary.source, imagePath, imageUrl, entries });
       setStage(3);
     } catch (err) {
       // Entries stay as drafts, so the user can simply try closing again.
@@ -198,7 +198,7 @@ function Today() {
         {stage === 3 && art && (
           <Link href={`/gallery/${date}`} className={`${s.result} reveal`}>
             <span className={s.resultArt}>
-              <Art scene={art.scene} />
+              <Picture scene={art.scene} imageUrl={art.imageUrl} alt={art.summary} />
             </span>
             <span className={s.resultText}>
               <strong>오늘의 그림이 완성됐어요</strong>

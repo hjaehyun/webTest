@@ -6,6 +6,7 @@ import type { PostgrestError, SupabaseClient, User } from "@supabase/supabase-js
 import type { Artwork, DB, Entry, Mood, Profile, Scene, StyleId } from "@/lib/types";
 import { debugLog } from "../debug";
 import { HttpError } from "../http";
+import { removeImage, signImagePaths } from "./images";
 import { toSong } from "./songs";
 
 const DEFAULT_EXHIBITION_TITLE = "나의 전시";
@@ -32,7 +33,7 @@ export async function loadDb(sb: SupabaseClient, user: User): Promise<DB> {
     sb.from("entries").select("id, day, written_at, body").eq("user_id", user.id).order("written_at"),
     sb
       .from("daily_artworks")
-      .select("day, style, scene, summary, tags, mood, song_pool(id, video_id, title, channel)")
+      .select("day, style, scene, summary, tags, mood, image_path, song_pool(id, video_id, title, channel)")
       .eq("user_id", user.id)
       .eq("status", "done"),
     sb.from("exhibitions").select("id, title, description, is_public").eq("user_id", user.id).maybeSingle(),
@@ -46,6 +47,8 @@ export async function loadDb(sb: SupabaseClient, user: User): Promise<DB> {
     ? { nick: profileRes.data.nick, style: profileRes.data.style as StyleId }
     : null;
 
+  // Own pictures only (RLS), so signing them for the owner is fine.
+  const signed = await signImagePaths((artRes.data ?? []).map((r) => r.image_path as string | null));
   const artworks: Record<string, Artwork> = {};
   for (const r of artRes.data ?? []) {
     artworks[r.day] = {
@@ -56,6 +59,7 @@ export async function loadDb(sb: SupabaseClient, user: User): Promise<DB> {
       tags: r.tags,
       mood: (r.mood ?? null) as Mood | null,
       song: r.song_pool ? toSong(r.song_pool as unknown as Parameters<typeof toSong>[0]) : null,
+      imageUrl: r.image_path ? (signed.get(r.image_path) ?? null) : null,
       entries: [],
     };
   }
@@ -134,11 +138,12 @@ export async function updateEntry(sb: SupabaseClient, userId: string, id: string
 export async function saveArtwork(
   sb: SupabaseClient,
   userId: string,
-  a: { date: string; scene: Scene; style: StyleId; summary: string; tags: string[]; mood?: Mood; songQuery?: string },
+  a: { date: string; scene: Scene; style: StyleId; summary: string; tags: string[]; mood?: Mood; songQuery?: string; imagePath?: string | null },
 ): Promise<void> {
   const { error } = await sb.from("daily_artworks").insert({
     mood: a.mood ?? null,
     song_query: a.songQuery?.trim() || null, // private: only the song route reads it
+    image_path: a.imagePath ?? null, // checked by the route (own folder, this day) and by the DB
     user_id: userId,
     day: a.date,
     style: a.style,
@@ -159,14 +164,15 @@ export async function saveArtwork(
 export async function redrawArtwork(
   sb: SupabaseClient,
   userId: string,
-  a: { date: string; scene: Scene; style: StyleId; summary: string; tags: string[] },
+  a: { date: string; scene: Scene; style: StyleId; summary: string; tags: string[]; imagePath?: string | null },
 ): Promise<void> {
-  const { error } = await sb.rpc("redraw_artwork", {
+  const { data: oldPath, error } = await sb.rpc("redraw_artwork", {
     p_day: a.date,
     p_style: a.style,
     p_scene: a.scene,
     p_summary: a.summary,
     p_tags: a.tags,
+    p_image_path: a.imagePath ?? null,
   });
   if (error?.code === "PGRST202") {
     // Function not found: supabase/schema.sql has not been re-run since this change.
@@ -176,7 +182,9 @@ export async function redrawArtwork(
     [NO_DATA_FOUND]: new HttpError(404, "이날은 그림이 없어요"),
     [CHECK_VIOLATION]: new HttpError(400, "그림 정보가 너무 길거나 올바르지 않아요"),
   });
-  debugLog("artwork", "redrawn", { userId, date: a.date, style: a.style, scene: a.scene });
+  // The old file is gone from the DB now; delete it too (best effort, never fails the redraw).
+  if (typeof oldPath === "string" && oldPath !== a.imagePath) await removeImage(sb, oldPath);
+  debugLog("artwork", "redrawn", { userId, date: a.date, style: a.style, scene: a.scene, image: !!a.imagePath });
 }
 
 /** Updates the user's exhibition. `dates` replaces the hung pictures, in order. */

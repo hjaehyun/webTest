@@ -22,4 +22,3 @@
 .foot { flex-shrink: 0; padding: 16px 28px 28px; border-top: 1px solid #3A3943; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .foot .hand { font-size: 22px; font-weight: 700; }
 .foot a { height: 44px; padding: 0 18px; border-radius: 22px; background: #F2EFE9; color: var(--dark); display: flex; align-items: center; text-decoration: none; font-size: 14px; font-weight: 700; }
-.img { display: block; width: 100%; height: auto; }

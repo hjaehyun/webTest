@@ -9,7 +9,15 @@ import { shareInflight } from "./inflight";
 import type { Artwork, DB, Entry, Profile, Scene, Song, StyleId } from "./types";
 
 /** A newly drawn picture's fields, for redrawArtwork. */
-export type Redraw = { scene: Scene; style: StyleId; summary: string; tags: string[]; summarySource?: "ai" | "fallback" };
+export type Redraw = {
+  scene: Scene;
+  style: StyleId;
+  summary: string;
+  tags: string[];
+  summarySource?: "ai" | "fallback"; // shown only
+  imagePath?: string | null; // sent
+  imageUrl?: string | null; // shown
+};
 
 type Store = {
   ready: boolean;
@@ -181,16 +189,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           return { ...d, drafts, artworks: { ...d.artworks, [a.date]: a } };
         });
         // The server already has the day's entries; it links them to the picture by date.
-        const { date, scene, style, summary, tags, mood, songQuery } = a;
-        const saved = api("POST", "/api/me/artworks", { date, scene, style, summary, tags, mood, songQuery });
+        const { date, scene, style, summary, tags, mood, songQuery, imagePath } = a;
+        const saved = api("POST", "/api/me/artworks", { date, scene, style, summary, tags, mood, songQuery, imagePath: imagePath ?? null });
         save(saved);
         // The song is extra: if it fails the picture is still saved, and the detail page offers a retry.
         saved.then(() => requestSong(date, false)).catch((err) => console.warn("[song]", err));
       },
       redrawArtwork: async (date, next) => {
         // Not optimistic: the old picture stays on screen until the server has the new one.
-        const { scene, style, summary, tags } = next; // summarySource is shown only, never sent
-        await api("POST", `/api/me/artworks/${encodeURIComponent(date)}/redraw`, { scene, style, summary, tags });
+        const { scene, style, summary, tags, imagePath } = next; // summarySource/imageUrl are shown only
+        await api("POST", `/api/me/artworks/${encodeURIComponent(date)}/redraw`, { scene, style, summary, tags, imagePath: imagePath ?? null });
         update((d) => {
           const old = d.artworks[date];
           return old ? { ...d, artworks: { ...d.artworks, [date]: { ...old, ...next } } } : d;

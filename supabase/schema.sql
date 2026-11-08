@@ -107,6 +107,16 @@ alter table public.daily_artworks
   -- Private like the rest of the row: only the song route reads it; never in song_pool or public exhibitions.
   add column if not exists song_query  text check (char_length(song_query) between 1 and 40);
 
+-- The drawn picture (specs/haru-image-ai.spl): a path in the private artworks bucket, never a URL.
+-- "{user_id}/{YYYY-MM-DD}-{32 letters}.jpg"; the first part must be the row's owner, so nobody can attach
+-- someone else's file. The server hands out 1-hour signed URLs (owner, or a public exhibition only).
+alter table public.daily_artworks
+  add column if not exists image_path text
+    check (image_path ~ '^[0-9a-f-]{36}/[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9]{32}\.jpg$');
+alter table public.daily_artworks drop constraint if exists daily_artworks_image_path_owner;
+alter table public.daily_artworks add constraint daily_artworks_image_path_owner
+  check (image_path is null or split_part(image_path, '/', 1) = user_id::text);
+
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant select on public.profiles, public.daily_artworks, public.exhibitions, public.exhibition_items to anon;
@@ -116,7 +126,7 @@ revoke select on public.ai_usage from anon;
 -- Creating is limited to the columns the app sends; image_url/status/created_at stay server-side.
 -- Redrawing goes through redraw_artwork() below. Account deletion uses the secret key and is unaffected.
 revoke insert, update, delete on public.daily_artworks from anon, authenticated;
-grant insert (user_id, day, style, scene, summary, tags, mood, song_query) on public.daily_artworks to authenticated;
+grant insert (user_id, day, style, scene, summary, tags, mood, song_query, image_path) on public.daily_artworks to authenticated;
 -- Fragments: editing may only change the text. id, day, written_at and user_id stay as written,
 -- so an edit can't move a fragment to another day (e.g. into a closed one) or change its time.
 revoke update on public.entries from anon, authenticated;
@@ -239,11 +249,13 @@ grant execute on function public.consume_ai_quota(text) to authenticated;
 -- and a new one created, but other sessions never see the day without a picture (so its entries stay
 -- locked) and the picture keeps its place in any exhibition. security definer because users may not
 -- delete pictures themselves (M3); it only ever touches auth.uid()'s own row, and the table's check
--- constraints still validate style, scene, summary and tags.
+-- constraints still validate style, scene, summary, tags and the new image_path (format, owner).
+-- Returns the old picture's file so the caller can delete it. Replaces the earlier 5-argument version.
+drop function if exists public.redraw_artwork(date, text, text, text, text[]);
 create or replace function public.redraw_artwork(
-  p_day date, p_style text, p_scene text, p_summary text, p_tags text[]
+  p_day date, p_style text, p_scene text, p_summary text, p_tags text[], p_image_path text default null
 )
-returns void language plpgsql security definer set search_path = '' as $$
+returns text language plpgsql security definer set search_path = '' as $$
 declare
   uid    uuid := auth.uid();
   old    public.daily_artworks%rowtype;
@@ -269,19 +281,21 @@ begin
     from public.exhibition_items where artwork_id = old_id;
 
   delete from public.daily_artworks where id = old_id;
-  -- The song and its match key stay with the day (a redraw keeps the picture's song).
-  insert into public.daily_artworks (user_id, day, style, scene, summary, tags, mood, weather, time_of_day, song_id, song_query)
+  -- The song and its match key stay with the day (a redraw keeps the picture's song); the image is the new one.
+  insert into public.daily_artworks (user_id, day, style, scene, summary, tags, mood, weather, time_of_day, song_id, song_query, image_path)
     values (uid, p_day, p_style, p_scene, p_summary, coalesce(p_tags, '{}'),
-            old.mood, old.weather, old.time_of_day, old.song_id, old.song_query)
+            old.mood, old.weather, old.time_of_day, old.song_id, old.song_query, p_image_path)
     returning id into new_id;
 
   insert into public.exhibition_items (exhibition_id, artwork_id, position, note)
     select (h ->> 'ex')::uuid, new_id, (h ->> 'pos')::int, h ->> 'note'
       from jsonb_array_elements(hung) h;
+
+  return old.image_path; -- null when the old picture had no file
 end;
 $$;
-revoke execute on function public.redraw_artwork(date, text, text, text, text[]) from public, anon;
-grant execute on function public.redraw_artwork(date, text, text, text, text[]) to authenticated;
+revoke execute on function public.redraw_artwork(date, text, text, text, text[], text) from public, anon;
+grant execute on function public.redraw_artwork(date, text, text, text, text[], text) to authenticated;
 
 -- Picks one pool song for a match key by weighted random (Efraimidis-Spirakis):
 -- weight = max(0.2, 1 + likes - 0.5 * skips). A null weather or time means "any".
@@ -418,11 +432,17 @@ create policy "song_feedback: own" on public.song_feedback
   for all to authenticated
   using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
 
--- ---------------------------------------------------------------- storage (for the image AI, later)
--- Public bucket: anyone with a picture's URL can open it; paths start with the owner's id.
+-- ---------------------------------------------------------------- storage (pictures)
+-- Private bucket (specs/haru-image-ai.spl): no public URLs. Paths start with the owner's id; owners read
+-- and write their own folder, and the server signs 1-hour URLs for the owner or for a public exhibition.
 
-insert into storage.buckets (id, name, public) values ('artworks', 'artworks', true)
-  on conflict (id) do nothing;
+insert into storage.buckets (id, name, public) values ('artworks', 'artworks', false)
+  on conflict (id) do update set public = false;
+
+drop policy if exists "artworks bucket: read own files" on storage.objects;
+create policy "artworks bucket: read own files" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'artworks' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
 drop policy if exists "artworks bucket: upload to own folder" on storage.objects;
 create policy "artworks bucket: upload to own folder" on storage.objects

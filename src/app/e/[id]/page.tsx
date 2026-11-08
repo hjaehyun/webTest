@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import Art from "@/components/Art";
+import Picture from "@/components/Picture";
 import SongCard from "@/components/SongCard";
 import { IconBack, IconNext } from "@/components/ui";
 import { monthDay } from "@/lib/date";
 import { fetchPublicExhibition } from "@/lib/exhibitions";
 import { useStore } from "@/lib/store";
-import type { PublicArtwork, PublicExhibition } from "@/lib/types";
+import type { PublicExhibition } from "@/lib/types";
 import s from "./public.module.css";
 
 type Load = { state: "loading" } | { state: "missing" } | { state: "error"; message: string } | { state: "ok"; ex: PublicExhibition };
@@ -84,7 +84,7 @@ function Gallery({ ex, i, setI }: { ex: PublicExhibition; i: number; setI: (i: n
           <>
             <figure className={s.figure}>
               <div className={s.mat}>
-                <Picture work={cur} />
+                <Picture scene={cur.scene} imageUrl={cur.imageUrl} alt={cur.summary} />
               </div>
               <figcaption>
                 <span>{monthDay(cur.date)}</span>
@@ -108,11 +108,4 @@ function Gallery({ ex, i, setI }: { ex: PublicExhibition; i: number; setI: (i: n
       </main>
     </>
   );
-}
-
-/** Real image once the image AI stores one; the placeholder scene until then. */
-function Picture({ work }: { work: PublicArtwork }) {
-  if (!work.imageUrl) return <Art scene={work.scene} />;
-  // eslint-disable-next-line @next/next/no-img-element -- Storage URLs, no next/image config yet
-  return <img className={s.img} src={work.imageUrl} alt={work.summary} />;
 }

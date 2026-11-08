@@ -113,6 +113,7 @@ input::placeholder { color: var(--faint); }
 
 .art-frame { border-radius: 12px; overflow: hidden; display: block; }
 .art { width: 100%; aspect-ratio: 1; display: block; }
+.art-img { object-fit: cover; height: auto; }
 
 /* Animations */
 .pop { animation: pop .28s ease-out; }

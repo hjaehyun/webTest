@@ -1,16 +1,17 @@
 // Picks providers from env. Server-only: never import this from a client component.
 //
 //   AI_TEXT_PROVIDER  = mock | gemini | claude | openai   (default mock; gemini without GEMINI_API_KEY -> mock)
-//   AI_IMAGE_PROVIDER = mock | claude-svg | openai   (default mock)
+//   AI_IMAGE_PROVIDER = mock | cloudflare | claude-svg | openai   (default mock; cloudflare without keys -> mock)
 
 import { claudeSvgImage, claudeText } from "./claude";
+import { cloudflareImage } from "./cloudflare";
 import { geminiText } from "./gemini";
 import { mockImage, mockText } from "./mock";
 import { openaiImage, openaiText } from "./openai";
 import type { ImageProvider, TextProvider } from "./types";
 
 const TEXT: Record<string, TextProvider> = { mock: mockText, gemini: geminiText, claude: claudeText, openai: openaiText };
-const IMAGE: Record<string, ImageProvider> = { mock: mockImage, "claude-svg": claudeSvgImage, openai: openaiImage };
+const IMAGE: Record<string, ImageProvider> = { mock: mockImage, cloudflare: cloudflareImage, "claude-svg": claudeSvgImage, openai: openaiImage };
 
 function pick<T>(table: Record<string, T>, envName: string): T {
   const key = process.env[envName]?.trim() || "mock";
@@ -27,6 +28,13 @@ export function textAI(): TextProvider {
   }
   return p;
 }
-export const imageAI = (): ImageProvider => pick(IMAGE, "AI_IMAGE_PROVIDER");
+export function imageAI(): ImageProvider {
+  const p = pick(IMAGE, "AI_IMAGE_PROVIDER");
+  if (p === cloudflareImage && !(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN)) {
+    console.warn("[ai] AI_IMAGE_PROVIDER=cloudflare but CLOUDFLARE_ACCOUNT_ID/CLOUDFLARE_API_TOKEN is not set: using mock");
+    return mockImage;
+  }
+  return p;
+}
 
 export { NotConfiguredError } from "./types";

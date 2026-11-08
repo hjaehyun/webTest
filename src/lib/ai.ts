@@ -22,8 +22,8 @@ export function summarizeDay(entries: Entry[]): Promise<DaySummary> {
 }
 
 /** Image AI step: scene description -> picture. */
-export function drawScene(summary: DaySummary, style: StyleId): Promise<Drawing> {
-  return post("/api/draw", { summary, style });
+export function drawScene(summary: DaySummary, style: StyleId, date: string): Promise<Drawing> {
+  return post("/api/draw", { summary, style, date });
 }
 
 export type CurationStats = {

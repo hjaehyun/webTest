@@ -1,7 +1,7 @@
 "use client";
 
-// Saves the day's picture as a PNG. Today the picture is the SVG placeholder from
-// components/Art.tsx; once the image AI fills Artwork.imageUrl, download that file instead.
+// Saves the day's picture: the drawn image as-is (downloadImage), or the SVG placeholder from
+// components/Art.tsx rendered to PNG (downloadSvgAsPng) when there is no drawn image.
 
 const SIZE = 1024;
 
@@ -45,4 +45,11 @@ export async function downloadSvgAsPng(svg: SVGSVGElement, filename: string): Pr
   } finally {
     URL.revokeObjectURL(src);
   }
+}
+
+/** Downloads the drawn picture (a signed Storage URL) under the given file name. */
+export async function downloadImage(url: string, filename: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download failed: ${res.status}`);
+  save(await res.blob(), filename);
 }

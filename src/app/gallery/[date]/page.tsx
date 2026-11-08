@@ -2,12 +2,12 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import Art from "@/components/Art";
+import Picture from "@/components/Picture";
 import SongCard from "@/components/SongCard";
 import { IconBack, IconNext, Screen, TopBar } from "@/components/ui";
 import { clock, longDate } from "@/lib/date";
 import { drawScene, summarizeDay } from "@/lib/ai";
-import { downloadSvgAsPng } from "@/lib/download";
+import { downloadImage, downloadSvgAsPng } from "@/lib/download";
 import { byTime, sortedArtworks, useStore } from "@/lib/store";
 import { styleOf, withParticle } from "@/lib/styles";
 import s from "./detail.module.css";
@@ -74,9 +74,9 @@ function Detail() {
       trace("start", { date, style, entries: art.entries.length });
       const summary = await summarizeDay(art.entries);
       trace("summarized", summary);
-      const { scene } = await drawScene(summary, style);
+      const { scene, imagePath, imageUrl } = await drawScene(summary, style, date);
       trace("drawn", { scene });
-      await redrawArtwork(date, { scene, style, summary: summary.summary, tags: summary.tags, summarySource: summary.source });
+      await redrawArtwork(date, { scene, style, summary: summary.summary, tags: summary.tags, summarySource: summary.source, imagePath, imageUrl });
       trace("saved");
     } catch (err) {
       console.error(err);
@@ -88,10 +88,12 @@ function Detail() {
 
   async function download() {
     const svg = frame.current?.querySelector("svg");
-    if (!svg || saving) return;
+    const img = frame.current?.querySelector("img");
+    if ((!svg && !img) || saving) return;
     setSaving(true);
     try {
-      await downloadSvgAsPng(svg, `하루조각-${date}.png`);
+      if (img && art?.imageUrl) await downloadImage(art.imageUrl, `하루조각-${date}.jpg`);
+      else if (svg) await downloadSvgAsPng(svg, `하루조각-${date}.png`);
     } catch (err) {
       console.error(err);
       alert("그림을 저장하지 못했어요");
@@ -130,7 +132,7 @@ function Detail() {
       <main className={`scroll ${s.main}`}>
         <figure className={s.figure}>
           <span ref={frame} className={s.frame} aria-busy={redrawing}>
-            <Art scene={art.scene} />
+            <Picture scene={art.scene} imageUrl={art.imageUrl} alt={art.summary} />
           </span>
           <figcaption>
             <span className={s.badge}>{styleOf(art.style).label}</span>
@@ -182,7 +184,7 @@ function Detail() {
       </main>
 
       <div className={`bar ${s.actions}`}>
-        <button className={s.download} aria-label="그림 저장" title="그림 저장 (PNG)" onClick={download} disabled={saving || redrawing}>
+        <button className={s.download} aria-label="그림 저장" title="그림 저장" onClick={download} disabled={saving || redrawing}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
           </svg>

@@ -32,3 +32,10 @@ test("checkCuration", () => {
   assert.equal(checkCuration({ headline: "h", body: "b".repeat(601) }), null);
   assert.equal(checkCuration(undefined), null);
 });
+
+test("checkSummary: imagePrompt kept when safe, dropped (not fatal) otherwise", () => {
+  const withPrompt = { ...good, imagePrompt: "a brown cat on a sunny sidewalk, rainy window in the evening" };
+  assert.equal(checkSummary(withPrompt)?.imagePrompt, withPrompt.imagePrompt);
+  assert.equal(checkSummary({ ...good, imagePrompt: "call 010-1234" })?.imagePrompt, undefined);
+  assert.notEqual(checkSummary({ ...good, imagePrompt: "a".repeat(601) }), null);
+});
