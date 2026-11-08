@@ -83,8 +83,10 @@ export type CurationText = { headline: string; body: string };
 
 /** Sign-in account (users table); shown on the my page. */
 export type Account = {
-  email: string;
+  email: string; // empty for a Kakao account without email consent
   joinedAt: string; // ISO timestamp
+  kind: "email" | "social"; // social: no password (password change hidden, delete confirms with '탈퇴')
+  provider: "email" | "kakao" | "google";
 };
 
 export type DB = {

@@ -93,6 +93,34 @@ check "song from another Origin -> 403" 403 -X POST "${J[@]}" -H 'Origin: https:
   "$BASE/api/me/artworks/2026-11-04/song"
 check "song feedback with vote 2 -> 400" 400 -X POST "${J[@]}" -d '{"vote":2}' "$BASE/api/me/songs/1/feedback"
 
+echo "-- Social login (specs/haru-social-login.spl)"
+# has <name> <grep -E pattern on the response headers> <curl args...>
+has() {
+  local name="$1" pat="$2"
+  shift 2
+  if curl -s -D - -o /dev/null "$@" | tr -d '\r' | grep -qiE "$pat"; then
+    pass=$((pass + 1))
+    printf '[PASS] %-55s\n' "$name"
+  else
+    failn=$((failn + 1))
+    printf '[FAIL] %-55s no header matching %s\n' "$name" "$pat"
+  fi
+}
+check "oauth start with provider github -> 400" 400 "$BASE/api/auth/oauth/github"
+check "oauth start with provider abc -> 400" 400 "$BASE/api/auth/oauth/abc"
+has "oauth start kakao -> Supabase authorize" '^location: https://[^/]+\.supabase\.co/auth/v1/authorize\?provider=kakao' \
+  "$BASE/api/auth/oauth/kakao"
+has "next=https://evil.example is replaced by /today" '^set-cookie: haru_oauth_next=%2Ftoday;' \
+  "$BASE/api/auth/oauth/kakao?next=https%3A%2F%2Fevil.example"
+has "next=//evil.example is replaced by /today" '^set-cookie: haru_oauth_next=%2Ftoday;' \
+  "$BASE/api/auth/oauth/kakao?next=%2F%2Fevil.example"
+has "next=/\\evil.example is replaced by /today" '^set-cookie: haru_oauth_next=%2Ftoday;' \
+  "$BASE/api/auth/oauth/kakao?next=%2F%5Cevil.example"
+has "callback without code -> /?error=oauth" '^location: (https?://[^/]+)?/\?error=oauth$' "$BASE/api/auth/callback"
+has "callback with a bad code -> /?error=oauth" '^location: (https?://[^/]+)?/\?error=oauth$' \
+  "$BASE/api/auth/callback?code=bogus"
+check "delete account without sign-in -> 401" 401 -X DELETE "${J[@]}" -d '{"confirm":"탈퇴"}' "$BASE/api/me"
+
 rm -f /tmp/smoke_body.$$
 echo "== $pass passed, $failn failed"
 [ "$failn" -eq 0 ]

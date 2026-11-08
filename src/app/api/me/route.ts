@@ -1,9 +1,10 @@
 // GET /api/me -> DB (the signed-in user's whole diary), 401 when signed out
-// DELETE /api/me  { password } -> 200, account and all its data removed
+// DELETE /api/me  { password } (email account) | { confirm: "탈퇴" } (social account) -> 200, account and all its data removed
 
 import { NextResponse } from "next/server";
 import { checkPassword, clearAuthCookies, requireUser } from "@/server/auth";
 import { loadDb } from "@/server/db/data";
+import { accountInfo } from "@/server/oauth";
 import { removeUserImages } from "@/server/db/images";
 import { DB_FAILED, bad, fail, isObj, readJson, unauthorized } from "@/server/http";
 import { supabaseAdmin } from "@/server/supabase";
@@ -20,13 +21,19 @@ export async function GET() {
 
 export async function DELETE(req: Request) {
   const b = await readJson(req);
-  if (!isObj(b) || typeof b.password !== "string") return bad("password가 필요합니다");
+  if (!isObj(b)) return bad("password 또는 confirm이 필요합니다");
 
   try {
     const me = await requireUser();
     if (!me) return unauthorized();
-    if (!(await checkPassword(me.user.email ?? "", b.password))) {
-      return NextResponse.json({ error: "비밀번호가 맞지 않아요" }, { status: 403 });
+    if (accountInfo(me.user.identities).kind === "social") {
+      // No password to check: the user types '탈퇴' instead.
+      if (b.confirm !== "탈퇴") return NextResponse.json({ error: "'탈퇴'를 정확히 입력해 주세요" }, { status: 403 });
+    } else {
+      if (typeof b.password !== "string") return bad("password가 필요합니다");
+      if (!(await checkPassword(me.user.email ?? "", b.password))) {
+        return NextResponse.json({ error: "비밀번호가 맞지 않아요" }, { status: 403 });
+      }
     }
     // Picture files aren't rows, so they go first; then deleting the auth user cascades to every table.
     await removeUserImages(me.user.id);

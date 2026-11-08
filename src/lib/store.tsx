@@ -32,7 +32,8 @@ type Store = {
   signOut: () => Promise<void>;
   /** Throw an Error with a showable message, like signIn. */
   changePassword: (current: string, next: string) => Promise<void>;
-  deleteAccount: (password: string) => Promise<void>;
+  /** Email accounts confirm with their password, social accounts by typing '탈퇴'. */
+  deleteAccount: (proof: { password: string } | { confirm: string }) => Promise<void>;
   setProfile: (p: Profile) => void;
   addEntry: (date: string, text: string) => Entry;
   /** Resolves once every fragment still being saved (waiting for the location) has reached the server. */
@@ -161,8 +162,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       changePassword: async (current, next) => {
         await api("PUT", "/api/me/password", { current, next });
       },
-      deleteAccount: async (password) => {
-        await api("DELETE", "/api/me", { password });
+      deleteAccount: async (proof) => {
+        await api("DELETE", "/api/me", proof);
         setDb(createEmpty());
         setAuthed(false);
       },

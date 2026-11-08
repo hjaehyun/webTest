@@ -60,7 +60,7 @@ DECISION_SCOPE {
   }
   CONSTRAINT [
     "기상청 키는 env KMA_SERVICE_KEY 로만 읽는다 (서버 전용, 공공데이터포털 일반 인증키)"
-    "날씨 제공자는 env WEATHER_PROVIDER=mock|kma, 기본 mock"
+    "날씨 제공자는 env WEATHER_PROVIDER=kma|mock, 값이 없으면 날씨 없음 (배포에 env가 없을 때 가짜 날씨가 실제 조각글에 저장되지 않도록)"
     "기상청은 격자 좌표(nx, ny)를 쓴다: 위경도 → 격자 변환(LCC, 기상청 공식 변환식)"
     "초단기예보는 매시 30분 발표, 45분쯤부터 조회 가능: 발표 시각은 KST 기준으로 계산"
     "schema.sql 변경은 재실행해도 안전해야 하고, 변경분은 supabase/migrations/ 에도 둔다"
@@ -90,6 +90,7 @@ DECISION_SCOPE {
 
   IF coords != null AND 대한민국 범위(위도 33~39, 경도 124~132) AND WEATHER_PROVIDER == "kma" AND KMA_SERVICE_KEY EXISTS { SET weather = "기상청 초단기예보 조회 (3초 제한)" }
   ELIF coords != null AND WEATHER_PROVIDER == "mock" { SET weather = "mock 날씨" }
+  ELIF WEATHER_PROVIDER 없음 OR (WEATHER_PROVIDER == "kma" AND NOT KMA_SERVICE_KEY EXISTS) { SET weather = null }
   ELSE { SET weather = null }
 
   IF 기상청 오류 OR 3초 초과 OR 응답 형식 오류 { SET weather = null  EMIT WARNING "날씨 없이 저장" }
@@ -113,7 +114,7 @@ DECISION_SCOPE {
     GATE = AUTO
   }
   PHASE 제공자 {
-    DESCRIPTION = "WeatherProvider(mock | kma): kma는 기상청 REST를 fetch로 3초 제한, 실패는 null. 키 없으면 mock. .env.example 2개 변수"
+    DESCRIPTION = "WeatherProvider(mock | kma): kma는 기상청 REST를 fetch로 3초 제한, 실패는 null. 키 없거나 WEATHER_PROVIDER가 비어 있으면 날씨 없음. .env.example 2개 변수"
     DEPENDS_ON = 순수로직
     TRACE = SUMMARY
     OUTPUT → 제공자

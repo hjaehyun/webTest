@@ -8,6 +8,7 @@ import { IconNext, Screen, TopBar } from "@/components/ui";
 import { addDays, todayKey } from "@/lib/date";
 import { useStore } from "@/lib/store";
 import { styleOf } from "@/lib/styles";
+import type { Account } from "@/lib/types";
 import s from "./me.module.css";
 
 export default function MyPage() {
@@ -35,12 +36,22 @@ function joinedLabel(iso: string): string {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")} 가입`;
 }
 
+const PROVIDER_NAME = { kakao: "카카오", google: "Google" } as const;
+
+/** "you@x.com" for email accounts; "카카오 로그인 · you@x.com" (or just the provider) for social ones. */
+function accountLabel(a: Account): string {
+  if (a.kind === "email" || a.provider === "email") return a.email;
+  const name = `${PROVIDER_NAME[a.provider]} 로그인`;
+  return a.email ? `${name} · ${a.email}` : name;
+}
+
 function Me() {
   const router = useRouter();
   const { db, signOut } = useStore();
   const profile = db.profile!;
   const style = styleOf(profile.style);
   const [open, setOpen] = useState<"password" | "delete" | null>(null);
+  const social = db.account?.kind === "social";
 
   const artworks = Object.values(db.artworks);
   const pieceCount =
@@ -67,7 +78,7 @@ function Me() {
             <strong className="hand">{profile.nick}</strong>
             {db.account && (
               <>
-                <span>{db.account.email}</span>
+                <span>{accountLabel(db.account)}</span>
                 <span className={s.faint}>{joinedLabel(db.account.joinedAt)}</span>
               </>
             )}
@@ -130,16 +141,18 @@ function Me() {
         </nav>
 
         <section className={s.list} aria-label="계정">
-          <button
-            className={s.row}
-            aria-expanded={open === "password"}
-            onClick={() => setOpen(open === "password" ? null : "password")}
-          >
-            <span>비밀번호 변경</span>
-            <span className={s.meta} />
-            <IconNext />
-          </button>
-          {open === "password" && <PasswordForm onDone={() => setOpen(null)} />}
+          {!social && (
+            <button
+              className={s.row}
+              aria-expanded={open === "password"}
+              onClick={() => setOpen(open === "password" ? null : "password")}
+            >
+              <span>비밀번호 변경</span>
+              <span className={s.meta} />
+              <IconNext />
+            </button>
+          )}
+          {!social && open === "password" && <PasswordForm onDone={() => setOpen(null)} />}
           <button className={s.row} onClick={logout}>
             <span>로그아웃</span>
           </button>
@@ -153,7 +166,7 @@ function Me() {
           >
             회원탈퇴
           </button>
-          {open === "delete" && <DeleteForm onCancel={() => setOpen(null)} />}
+          {open === "delete" && <DeleteForm social={social} onCancel={() => setOpen(null)} />}
         </div>
       </main>
     </>
@@ -225,10 +238,10 @@ function PasswordForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function DeleteForm({ onCancel }: { onCancel: () => void }) {
+function DeleteForm({ social, onCancel }: { social: boolean; onCancel: () => void }) {
   const router = useRouter();
   const { deleteAccount } = useStore();
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState(""); // social accounts type '탈퇴' here instead
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -236,7 +249,7 @@ function DeleteForm({ onCancel }: { onCancel: () => void }) {
     e.preventDefault();
     setBusy(true);
     try {
-      await deleteAccount(password);
+      await deleteAccount(social ? { confirm: password.trim() } : { password });
       router.replace("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "탈퇴하지 못했어요");
@@ -250,11 +263,12 @@ function DeleteForm({ onCancel }: { onCancel: () => void }) {
         탈퇴하면 지금까지 쓴 조각, 그림, 전시가 <strong>모두 지워지고 되돌릴 수 없어요.</strong>
       </p>
       <label className="field">
-        비밀번호 확인
+        {social ? "확인을 위해 '탈퇴'를 입력해 주세요" : "비밀번호 확인"}
         <input
           className="input"
-          type="password"
-          autoComplete="current-password"
+          type={social ? "text" : "password"}
+          autoComplete={social ? "off" : "current-password"}
+          placeholder={social ? "탈퇴" : undefined}
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -269,7 +283,7 @@ function DeleteForm({ onCancel }: { onCancel: () => void }) {
         <button type="button" className="btn ghost" onClick={onCancel}>
           취소
         </button>
-        <button type="submit" className={`btn ${s.dangerBtn}`} disabled={busy || !password}>
+        <button type="submit" className={`btn ${s.dangerBtn}`} disabled={busy || (social ? password.trim() !== "탈퇴" : !password)}>
           {busy ? "지우는 중…" : "탈퇴하기"}
         </button>
       </div>

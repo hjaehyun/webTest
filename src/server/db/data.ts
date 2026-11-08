@@ -6,6 +6,7 @@ import type { PostgrestError, SupabaseClient, User } from "@supabase/supabase-js
 import type { Artwork, DB, Entry, EntryWeather, Mood, Profile, Scene, StyleId, WeatherCode } from "@/lib/types";
 import { debugLog } from "../debug";
 import { HttpError } from "../http";
+import { accountInfo } from "../oauth";
 import { removeImage, signImagePaths } from "./images";
 import { toSong } from "./songs";
 
@@ -86,7 +87,7 @@ export async function loadDb(sb: SupabaseClient, user: User): Promise<DB> {
   }
 
   return {
-    account: { email: user.email ?? "", joinedAt: user.created_at },
+    account: { email: user.email ?? "", joinedAt: user.created_at, ...accountInfo(user.identities) },
     profile,
     drafts,
     artworks,
