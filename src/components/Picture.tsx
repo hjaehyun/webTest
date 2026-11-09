@@ -1,7 +1,7 @@
 "use client";
 
 // A day's picture: the drawn image when there is one, otherwise (no image AI, a failed drawing, or a
-// signed URL that expired after an hour) the scene's SVG placeholder. Same box as Art (.art).
+// signed URL that expired after an hour) the scene's example illustration. Same box as Art (.art).
 
 import { useEffect, useState } from "react";
 import type { Scene } from "@/lib/types";

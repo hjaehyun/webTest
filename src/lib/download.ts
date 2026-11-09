@@ -1,9 +1,6 @@
 "use client";
 
-// Saves the day's picture: the drawn image as-is (downloadImage), or the SVG placeholder from
-// components/Art.tsx rendered to PNG (downloadSvgAsPng) when there is no drawn image.
-
-const SIZE = 1024;
+// Saves the day's picture as-is: the drawn image, or the example illustration (components/Art.tsx).
 
 function save(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -17,37 +14,7 @@ function save(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Renders an inline <svg> onto a canvas and downloads it as PNG. */
-export async function downloadSvgAsPng(svg: SVGSVGElement, filename: string): Promise<void> {
-  const copy = svg.cloneNode(true) as SVGSVGElement;
-  copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  copy.setAttribute("width", String(SIZE));
-  copy.setAttribute("height", String(SIZE));
-  const markup = new XMLSerializer().serializeToString(copy);
-  const src = URL.createObjectURL(new Blob([markup], { type: "image/svg+xml;charset=utf-8" }));
-
-  try {
-    const img = new Image();
-    img.decoding = "async";
-    img.src = src;
-    await img.decode();
-
-    const canvas = document.createElement("canvas");
-    canvas.width = SIZE;
-    canvas.height = SIZE;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("canvas 2d context unavailable");
-    ctx.drawImage(img, 0, 0, SIZE, SIZE);
-
-    const png = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
-    if (!png) throw new Error("PNG encoding failed");
-    save(png, filename);
-  } finally {
-    URL.revokeObjectURL(src);
-  }
-}
-
-/** Downloads the drawn picture (a signed Storage URL) under the given file name. */
+/** Downloads an image URL (signed Storage URL or a /scenes file) under the given file name. */
 export async function downloadImage(url: string, filename: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`download failed: ${res.status}`);

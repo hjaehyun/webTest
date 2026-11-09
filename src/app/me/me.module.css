@@ -18,7 +18,7 @@
 
 .styleCard { display: flex; align-items: center; gap: 14px; }
 .thumb { width: 56px; height: 56px; flex-shrink: 0; border-radius: 10px; overflow: hidden; display: block; }
-.thumb svg { width: 100%; height: 100%; display: block; }
+.thumb .art { width: 100%; height: 100%; display: block; object-fit: cover; }
 .styleText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
 .styleText strong { font-size: 16px; color: var(--ink); }
 

@@ -7,7 +7,7 @@ import SongCard from "@/components/SongCard";
 import { IconBack, IconNext, Screen, TopBar } from "@/components/ui";
 import { clock, longDate } from "@/lib/date";
 import { drawScene, summarizeDay } from "@/lib/ai";
-import { downloadImage, downloadSvgAsPng } from "@/lib/download";
+import { downloadImage } from "@/lib/download";
 import { byTime, sortedArtworks, useStore } from "@/lib/store";
 import { styleOf, withParticle } from "@/lib/styles";
 import s from "./detail.module.css";
@@ -87,13 +87,13 @@ function Detail() {
   }
 
   async function download() {
-    const svg = frame.current?.querySelector("svg");
     const img = frame.current?.querySelector("img");
-    if ((!svg && !img) || saving) return;
+    if (!img || saving) return;
     setSaving(true);
     try {
-      if (img && art?.imageUrl) await downloadImage(art.imageUrl, `하루조각-${date}.jpg`);
-      else if (svg) await downloadSvgAsPng(svg, `하루조각-${date}.png`);
+      // The drawn picture (jpg) when there is one, otherwise the example illustration shown in its place.
+      if (art?.imageUrl && img.src === art.imageUrl) await downloadImage(art.imageUrl, `하루조각-${date}.jpg`);
+      else await downloadImage(img.src, `하루조각-${date}.webp`);
     } catch (err) {
       console.error(err);
       alert("그림을 저장하지 못했어요");
